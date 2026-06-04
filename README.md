@@ -21,6 +21,12 @@
 
 </div>
 
+---
+
+![OneArt Photo Studio — Before/After comparison](docs/screenshots/app_comparison.png)
+
+
+
 </div>
 
 ---
