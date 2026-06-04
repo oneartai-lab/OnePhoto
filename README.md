@@ -33,14 +33,14 @@
 
 ## 🎯 What It Does
 
-**OneArt Photo Studio** applies professional cinematic film effects to your photos and saves them with **realistic camera EXIF metadata** — so your photo looks like it came straight from a Canon R5, Sony A7 IV, or Leica M11.
+**OneArt Photo Studio** applies professional cinematic film effects to your photos — completely offline, on your machine. No AI cloud, no subscriptions, no quality loss from re-compression.
 
 ```
-Before: flat iPhone snap
-After:  cinematic film photo with grain, bloom & Canon EOS R5 metadata
+Before: flat, unprocessed photo
+After:  cinematic image with film grain, bloom glow & precise tone grading
 ```
 
-**Key insight:** Your audience doesn't see your camera. They see the final image — and the metadata in it.
+**The result looks like it was shot on professional camera gear — because the processing is that good.**
 
 ---
 
@@ -59,19 +59,6 @@ After:  cinematic film photo with grain, bloom & Canon EOS R5 metadata
 | **Lens Warp** | Barrel distortion + chromatic aberration |
 | **Vignette** | Radial darkening for focused composition |
 | **Tone Adjust** | Brightness, contrast, highlights, shadows, warmth |
-
-### 📷 Realistic Camera EXIF Metadata
-
-> **This is the killer feature.** Export your photo with metadata from a real camera — the viewer's app shows "Canon EOS R5" in the EXIF panel.
-
-| Preset | Camera | Lens |
-|--------|--------|------|
-| **Canon** | Canon EOS R5 | RF 24-70mm F2.8 L IS USM |
-| **Sony** | Sony A7 IV | FE 24-70mm F2.8 GM |
-| **Nikon** | Nikon Z9 | NIKKOR Z 24-70mm f/2.8 S |
-| **Fujifilm** | Fujifilm X-T5 | XF 23mm F1.4 R LM WR |
-| **Leica** | Leica M11 | SUMMICRON-M 35mm f/2 ASPH |
-| **iPhone** | iPhone 15 Pro | Triple camera f/1.78 |
 
 ### 🔒 Privacy First
 - ✅ **Zero data collection** — no telemetry, no analytics
@@ -133,8 +120,7 @@ Your photo (JPG/PNG/RAW/HEIC)
 └─────────────────────────────────┘
         │
         ▼
-JPEG output + Realistic EXIF
-(Canon/Sony/Nikon/Fuji/Leica/iPhone)
+High-quality JPEG output
 ```
 
 > On **Android / browser**: all processing runs client-side in JavaScript — no server needed.
@@ -151,7 +137,7 @@ OnePhoto/
 ├── engine/                   # 🔧 Image processing core
 │   ├── nodes.py              # All effects (ComfyUI-compatible nodes)
 │   ├── lens_distortion_safe.py
-│   ├── presets.py            # Camera EXIF presets
+│   ├── presets.py            # Output quality presets
 │   └── luts/                 # Drop .cube LUT files here
 │
 ├── frontend/                 # 🖥️ Web UI
@@ -172,15 +158,14 @@ Nodes available under `oneart/photo`:
 
 | Node | Description |
 |------|-------------|
-| `OneArtPhotoLoad` | Load image / RAW with EXIF |
+| `OneArtPhotoLoad` | Load image or RAW file |
 | `OneArtPhotoNoise` | Sensor noise simulation |
 | `OneArtPhotoGrain` | Analog film grain |
 | `OneArtPhotoStyleFX` | Cinematic effects (Bloom, Halation, etc.) |
 | `OneArtPhotoVignette` | Radial vignette |
 | `OneArtPhotoToneAdjust` | Full tone grading |
 | `OneArtPhotoLUT` | Apply .cube / image LUT |
-| `OneArtPhotoMetadata` | Attach realistic EXIF |
-| `OneArtPhotoSaveJpeg` | Save with EXIF passthrough |
+| `OneArtPhotoSaveJpeg` | Save as high-quality JPEG |
 
 ---
 
@@ -191,7 +176,6 @@ Nodes available under `oneart/photo`:
 | `pywebview` | ≥ 5.0 | Desktop WebView window |
 | `Pillow` | latest | Image I/O and processing |
 | `numpy` | latest | Fast array math |
-| `piexif` | latest | EXIF metadata |
 | `pillow-heif` | latest | HEIC/HEIF support |
 | `rawpy` | latest | RAW camera files (DNG, CR2, NEF…) |
 | `tifffile` | latest | TIFF support |
@@ -208,9 +192,9 @@ Nodes available under `oneart/photo`:
 
 PRs welcome! Areas we'd love help with:
 - 🎨 More Style FX modes (Cross-process, Duotone, Cyanotype…)
-- 📸 More camera presets (Hasselblad, Pentax, Olympus…)
 - 🌍 More UI languages
-- 📦 Windows installer / `.exe` build
+- 📦 macOS / Linux support
+- 🖼️ Batch processing mode
 
 ---
 
