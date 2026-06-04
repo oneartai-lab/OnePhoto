@@ -1,0 +1,68 @@
+# Bundled Python runtime (not committed — install via requirements.txt)
+python/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Output / generated files
+output/
+*.jpg
+*.jpeg
+*.png
+*.tiff
+*.tif
+*.webp
+*.heic
+*.dng
+*.raw
+*.cr2
+*.nef
+*.arw
+
+# Node / Capacitor
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Android build artifacts
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/*.keystore
+android/*.jks
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PyInstaller
+*.spec
+dist/
+*.exe
+
+# Logs
+*.log
+logs/
+
+# Capacitor
+.capacitor/

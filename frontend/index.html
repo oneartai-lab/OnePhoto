@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OneArt Photo Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ═══════════════ HEADER ═══════════════ -->
+  <header class="app-header">
+    <div class="header-left">
+      <svg class="app-logo" viewBox="0 0 40 40" width="32" height="32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="logoGrad" x1="0" y1="0" x2="40" y2="40">
+            <stop offset="0%" stop-color="#f0a030"/>
+            <stop offset="100%" stop-color="#e87020"/>
+          </linearGradient>
+        </defs>
+        <rect x="2" y="2" width="36" height="36" rx="10" stroke="url(#logoGrad)" stroke-width="2.5" fill="none"/>
+        <circle cx="20" cy="17" r="7" stroke="url(#logoGrad)" stroke-width="2" fill="none"/>
+        <path d="M10 30 Q14 23, 20 26 Q26 29, 30 22" stroke="url(#logoGrad)" stroke-width="2" fill="none" stroke-linecap="round"/>
+        <circle cx="28" cy="10" r="2.5" fill="url(#logoGrad)"/>
+      </svg>
+      <h1 class="app-title">OneArt <span class="title-accent">Photo Studio</span></h1>
+    </div>
+    <div class="header-right">
+      <span class="version-badge">v1.0</span>
+    </div>
+  </header>
+
+  <!-- ═══════════════ MAIN LAYOUT ═══════════════ -->
+  <main class="app-main">
+
+    <!-- ─── LEFT: IMAGE PANEL ─── -->
+    <section class="image-panel">
+      <div id="uploadZone" class="upload-zone">
+        <input type="file" id="fileInput" accept="image/*" hidden>
+        <div class="upload-content" id="uploadContent">
+          <svg class="upload-icon" viewBox="0 0 64 64" width="56" height="56" fill="none">
+            <rect x="4" y="4" width="56" height="56" rx="14" stroke="#888898" stroke-width="2" stroke-dasharray="6 4"/>
+            <path d="M32 20v18M24 30l8-10 8 10" stroke="#f0a030" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M20 42h24" stroke="#888898" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <p class="upload-title">Drop your photo here</p>
+          <p class="upload-hint">or click to browse &middot; JPG, PNG, TIFF, WebP</p>
+        </div>
+      </div>
+
+      <!-- Image Preview (hidden until image loaded) -->
+      <div id="previewContainer" class="preview-container hidden">
+        <div class="comparison-wrapper" id="comparisonWrapper">
+          <img id="previewImage" class="preview-img" alt="Original">
+          <img id="resultImage" class="preview-img result-img hidden" alt="Processed">
+          <div id="comparisonSlider" class="comparison-slider hidden">
+            <div class="comparison-line"></div>
+            <div class="comparison-handle">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                <path d="M8 5l-5 7 5 7M16 5l5 7-5 7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+          </div>
+          <div class="comparison-labels hidden" id="comparisonLabels">
+            <span class="label-before">BEFORE</span>
+            <span class="label-after">AFTER</span>
+          </div>
+        </div>
+        <div class="preview-toolbar">
+          <button class="tool-btn" id="btnRemoveImage" title="Remove image">
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M4 4l12 12M16 4L4 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── RIGHT: SETTINGS PANEL ─── -->
+    <aside class="settings-panel" id="settingsPanel">
+      <div class="settings-scroll">
+
+        <!-- ── NOISE ── -->
+        <div class="section" data-section="noise">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="14" cy="3" r="1" fill="currentColor"/><circle cx="9" cy="10" r="1.5" fill="currentColor"/><circle cx="3" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/><circle cx="10" cy="17" r="1" fill="currentColor"/><circle cx="17" cy="18" r="1" fill="currentColor"/></svg>
+            </span>
+            <span class="section-title">Noise</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Noise Level<span class="val" id="val_noise_level">0.02</span></label>
+              <input type="range" class="slider" id="noise_level" min="0" max="1" step="0.01" value="0.02" data-default="0.02">
+            </div>
+            <div class="control-group">
+              <label>Blue Bias<span class="val" id="val_blue_bias">0.80</span></label>
+              <input type="range" class="slider" id="blue_bias" min="0.1" max="2" step="0.01" value="0.8" data-default="0.8">
+            </div>
+            <button class="reset-btn" data-reset="noise">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── GRAIN ── -->
+        <div class="section" data-section="grain">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><rect x="2" y="2" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="10" cy="8" r="1.5" fill="currentColor"/><circle cx="14" cy="5" r="1" fill="currentColor"/><circle cx="7" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="14" r="1" fill="currentColor"/></svg>
+            </span>
+            <span class="section-title">Grain</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Grain Strength<span class="val" id="val_grain_strength">0.30</span></label>
+              <input type="range" class="slider" id="grain_strength" min="0" max="1" step="0.01" value="0.3" data-default="0.3">
+            </div>
+            <div class="control-group">
+              <label>Grain Size<span class="val" id="val_grain_size">2</span></label>
+              <input type="range" class="slider" id="grain_size" min="1" max="10" step="1" value="2" data-default="2">
+            </div>
+            <button class="reset-btn" data-reset="grain">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── LENS WARP ── -->
+        <div class="section" data-section="lenswarp">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><ellipse cx="10" cy="10" rx="4" ry="8" stroke="currentColor" stroke-width="1"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1"/></svg>
+            </span>
+            <span class="section-title">Lens Warp</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Distortion<span class="val" id="val_distortion">0.03</span></label>
+              <input type="range" class="slider" id="distortion" min="-1" max="1" step="0.01" value="0.03" data-default="0.03">
+            </div>
+            <div class="control-group">
+              <label>Chromatic Aberration<span class="val" id="val_chromatic_aberration">0.10</span></label>
+              <input type="range" class="slider" id="chromatic_aberration" min="0" max="5" step="0.01" value="0.1" data-default="0.1">
+            </div>
+            <div class="control-group">
+              <label>Edge Softness<span class="val" id="val_edge_softness">0.15</span></label>
+              <input type="range" class="slider" id="edge_softness" min="0" max="1" step="0.01" value="0.15" data-default="0.15">
+            </div>
+            <button class="reset-btn" data-reset="lenswarp">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── STYLE FX ── -->
+        <div class="section" data-section="stylefx">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M10 2l2.5 5.5L18 9l-4.5 3.5L15 18l-5-3.5L5 18l1.5-5.5L2 9l5.5-1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="section-title">Style FX</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Mode</label>
+              <select class="select-input" id="mode" data-default="Bloom">
+                <option value="GlitchArt">GlitchArt</option>
+                <option value="SoftPortrait">SoftPortrait</option>
+                <option value="CinematicGrade">CinematicGrade</option>
+                <option value="Halation">Halation</option>
+                <option value="Bloom" selected>Bloom</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label>Strength<span class="val" id="val_strength">0.33</span></label>
+              <input type="range" class="slider" id="strength" min="0" max="1" step="0.01" value="0.33" data-default="0.33">
+            </div>
+            <div class="control-group">
+              <label>Radius<span class="val" id="val_radius">20.7</span></label>
+              <input type="range" class="slider" id="radius" min="0" max="64" step="0.1" value="20.7" data-default="20.7">
+            </div>
+            <div class="control-group">
+              <label>Threshold<span class="val" id="val_threshold">0.80</span></label>
+              <input type="range" class="slider" id="threshold" min="0" max="1" step="0.01" value="0.8" data-default="0.8">
+            </div>
+            <div class="control-group">
+              <label>Seed</label>
+              <input type="number" class="number-input" id="seed" value="0" min="0" step="1" data-default="0">
+            </div>
+            <button class="reset-btn" data-reset="stylefx">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── VIGNETTE ── -->
+        <div class="section" data-section="vignette">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1" stroke-dasharray="3 2"/></svg>
+            </span>
+            <span class="section-title">Vignette</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Outer Brightness<span class="val" id="val_outer_brightness">0.05</span></label>
+              <input type="range" class="slider" id="outer_brightness" min="-1" max="1" step="0.01" value="0.05" data-default="0.05">
+            </div>
+            <div class="control-group">
+              <label>Inner Brightness<span class="val" id="val_inner_brightness">0.20</span></label>
+              <input type="range" class="slider" id="inner_brightness" min="-1" max="1" step="0.01" value="0.2" data-default="0.2">
+            </div>
+            <button class="reset-btn" data-reset="vignette">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── TONE ADJUST ── -->
+        <div class="section" data-section="toneadjust">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M2 14 Q6 4, 10 10 Q14 16, 18 6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+            </span>
+            <span class="section-title">Tone Adjust</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Brightness<span class="val" id="val_brightness">1.16</span></label>
+              <input type="range" class="slider" id="brightness" min="0" max="2" step="0.01" value="1.16" data-default="1.16">
+            </div>
+            <div class="control-group">
+              <label>Contrast<span class="val" id="val_contrast">1.01</span></label>
+              <input type="range" class="slider" id="contrast" min="0" max="2" step="0.01" value="1.01" data-default="1.01">
+            </div>
+            <div class="control-group">
+              <label>Light Balance<span class="val" id="val_light_balance">0.36</span></label>
+              <input type="range" class="slider" id="light_balance" min="-1" max="1" step="0.01" value="0.36" data-default="0.36">
+            </div>
+            <div class="control-group">
+              <label>Highlights<span class="val" id="val_highlights">0.53</span></label>
+              <input type="range" class="slider" id="highlights" min="-1" max="1" step="0.01" value="0.53" data-default="0.53">
+            </div>
+            <div class="control-group">
+              <label>Shadows<span class="val" id="val_shadows">-0.02</span></label>
+              <input type="range" class="slider" id="shadows" min="-1" max="1" step="0.01" value="-0.02" data-default="-0.02">
+            </div>
+            <div class="control-group">
+              <label>Warmth<span class="val" id="val_warmth">0.04</span></label>
+              <input type="range" class="slider" id="warmth" min="-1" max="1" step="0.01" value="0.04" data-default="0.04">
+            </div>
+            <button class="reset-btn" data-reset="toneadjust">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── METADATA (EXIF) ── -->
+        <div class="section collapsed" data-section="metadata">
+          <button class="section-header" aria-expanded="false">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.2"/><line x1="6" y1="9.5" x2="14" y2="9.5" stroke="currentColor" stroke-width="1.2"/><line x1="6" y1="13" x2="11" y2="13" stroke="currentColor" stroke-width="1.2"/></svg>
+            </span>
+            <span class="section-title">Metadata (EXIF)</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Camera Preset</label>
+              <select class="select-input" id="preset" data-default="Canon">
+                <option value="Canon" selected>Canon</option>
+                <option value="Sony">Sony</option>
+                <option value="Nikon">Nikon</option>
+                <option value="Fujifilm">Fujifilm</option>
+                <option value="Leica">Leica</option>
+                <option value="iPhone">iPhone</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label>Artist</label>
+              <input type="text" class="text-input" id="artist" value="OneArt" data-default="OneArt">
+            </div>
+            <div class="control-group">
+              <label>Focal Length (mm)</label>
+              <input type="number" class="number-input" id="focal_length_mm" value="50" min="1" data-default="50">
+            </div>
+            <div class="control-group">
+              <label>f/Number</label>
+              <input type="text" class="text-input" id="fnumber" value="4.0" data-default="4.0">
+            </div>
+            <div class="control-group">
+              <label>Exposure (1/s)</label>
+              <input type="text" class="text-input" id="exposure_1_over_s" value="125" data-default="125">
+            </div>
+            <div class="control-group">
+              <label>ISO</label>
+              <input type="number" class="number-input" id="iso" value="400" min="50" step="1" data-default="400">
+            </div>
+            <div class="control-group">
+              <label>Quality<span class="val" id="val_quality">95</span></label>
+              <input type="range" class="slider" id="quality" min="1" max="100" step="1" value="95" data-default="95">
+            </div>
+            <button class="reset-btn" data-reset="metadata">Reset</button>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- ═══════════════ BOTTOM BAR ═══════════════ -->
+  <footer class="bottom-bar">
+    <div class="status-area">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-text" id="statusText">Ready</span>
+    </div>
+    <div class="action-buttons">
+      <button class="btn btn-process" id="btnProcess" disabled>
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M10 2v4l3-2-3-2zM18 10h-4l2 3 2-3zM10 18v-4l-3 2 3 2zM2 10h4l-2-3-2 3z" fill="currentColor"/><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+        <span>Process Photo</span>
+        <div class="btn-glow"></div>
+      </button>
+      <button class="btn btn-save hidden" id="btnSave">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M15 3H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V6l-2-3z" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v4h6V3" stroke="currentColor" stroke-width="1.2"/><rect x="6" y="11" width="8" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>
+        <span>Save</span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- ═══════════════ LOADING OVERLAY ═══════════════ -->
+  <div class="loading-overlay hidden" id="loadingOverlay">
+    <div class="spinner-wrapper">
+      <div class="spinner">
+        <div class="spinner-ring"></div>
+        <div class="spinner-ring inner"></div>
+      </div>
+      <p class="loading-text">Processing your photo&hellip;</p>
+    </div>
+  </div>
+
+  <!-- ═══════════════ TOAST CONTAINER ═══════════════ -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- ═══════════════ PYWEBVIEW NOTICE ═══════════════ -->
+  <div class="pywebview-notice hidden" id="pywebviewNotice">
+    <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="8" stroke="#f0a030" stroke-width="1.5"/><line x1="10" y1="6" x2="10" y2="11" stroke="#f0a030" stroke-width="1.5" stroke-linecap="round"/><circle cx="10" cy="14" r="1" fill="#f0a030"/></svg>
+    <span>Running in browser preview — backend API unavailable</span>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
