@@ -14,6 +14,13 @@
 
 > **Your photos never leave your device.** No account. No subscription. No internet required.
 
+<div align="center">
+
+### [⬇️ Download for Windows — v1.0 (36 MB)](https://github.com/oneartai-lab/OnePhoto/releases/latest)
+*No Python required · Just unzip and run*
+
+</div>
+
 </div>
 
 ---
@@ -70,7 +77,13 @@ After:  cinematic film photo with grain, bloom & Canon EOS R5 metadata
 
 ## 🚀 Quick Start
 
-### Windows Desktop
+### Windows Desktop — Simple (No Python needed)
+
+1. Go to **[Releases](https://github.com/oneartai-lab/OnePhoto/releases/latest)**
+2. Download `OneArtPhotoStudio-v1.0-windows-x64.zip`
+3. Unzip anywhere → run `OneArtPhotoStudio.exe`
+
+### Windows Desktop — From Source
 
 ```bash
 # 1. Clone
