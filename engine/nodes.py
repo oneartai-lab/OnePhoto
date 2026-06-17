@@ -9,10 +9,27 @@ from typing import Iterable, Tuple
 
 import numpy as np
 import piexif
-import torch
 from PIL import Image, ImageEnhance, ImageFilter
 
+# Minimal torch shim — ComfyUI node classes need torch at definition time,
+# but start_app.py never calls them. Real torch is no longer required.
+try:
+    import torch as _torch_real
+    import sys as _sys
+    _sys.modules.setdefault("torch", _torch_real)
+except ImportError:
+    import sys as _sys, types as _types
+    _t = _types.ModuleType("torch")
+    class _Tensor: pass
+    _t.Tensor = _Tensor
+    _t.stack = lambda tensors, dim=0: tensors
+    _t.no_grad = lambda: __import__("contextlib").nullcontext()
+    _t.nn = _types.SimpleNamespace(functional=_types.SimpleNamespace(interpolate=lambda *a, **kw: a[0]))
+    _sys.modules["torch"] = _t
+import torch
+
 import folder_paths
+
 
 from .presets import CAMERA_PRESETS
 
@@ -35,20 +52,6 @@ except Exception:
 _RESAMPLE = getattr(Image, "Resampling", Image)
 
 
-def _tensor_to_pil(image_tensor: torch.Tensor) -> Image.Image:
-    if image_tensor.is_cuda:
-        image_tensor = image_tensor.detach().cpu()
-    if image_tensor.ndim == 4:
-        if image_tensor.shape[0] != 1:
-            raise ValueError("Expected a single image tensor or batch size 1.")
-        image_tensor = image_tensor[0]
-    array = torch.clamp(image_tensor, 0.0, 1.0).numpy()
-    return Image.fromarray((array * 255.0).round().astype(np.uint8), mode="RGB")
-
-
-def _pil_to_tensor(image: Image.Image) -> torch.Tensor:
-    array = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
-    return torch.from_numpy(array)
 
 
 def _encode_exif(exif_bytes: bytes) -> str:
@@ -185,16 +188,6 @@ def build_exif_bytes(
     return piexif.dump({"0th": zeroth, "Exif": exif_ifd, "GPS": {}, "1st": {}, "Interop": {}})
 
 
-def _ensure_batch(images: torch.Tensor) -> torch.Tensor:
-    if images.ndim == 3:
-        return images.unsqueeze(0)
-    return images
-
-
-def _stack_pils(images: Iterable[Image.Image]) -> torch.Tensor:
-    tensors = [_pil_to_tensor(image) for image in images]
-    return torch.stack(tensors, dim=0)
-
 
 def _add_noise(array: np.ndarray, noise_level: float, blue_bias: float = 0.8) -> np.ndarray:
     noise = np.random.normal(0.0, 255.0 * noise_level, array.shape).astype(np.float32)
@@ -203,7 +196,7 @@ def _add_noise(array: np.ndarray, noise_level: float, blue_bias: float = 0.8) ->
     return np.clip(array + noise, 0, 255)
 
 
-def _apply_grain(image: Image.Image, strength: float, grain_size: int) -> Image.Image:
+def _apply_grain(image: Image.Image, strength: float, grain_size: int, luminosity_mask: bool = False) -> Image.Image:
     if strength <= 0:
         return image
     width, height = image.size
@@ -217,8 +210,209 @@ def _apply_grain(image: Image.Image, strength: float, grain_size: int) -> Image.
     base = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
     layer = np.asarray(grain, dtype=np.float32) / 255.0
     layer = layer[..., None]
-    mixed = np.clip(base * (0.85 + 0.3 * (layer - 0.5) * strength), 0, 1)
+    
+    if luminosity_mask:
+        # Modulate grain by (1 - highlights^2) to restrict grain to shadows/midtones
+        luma = base[..., 0] * 0.299 + base[..., 1] * 0.587 + base[..., 2] * 0.114
+        grain_mask = (1.0 - luma * luma)[..., None]
+        strength_map = strength * grain_mask
+        mixed = np.clip(base * (0.85 + 0.3 * (layer - 0.5) * strength_map), 0, 1)
+    else:
+        mixed = np.clip(base * (0.85 + 0.3 * (layer - 0.5) * strength), 0, 1)
+        
     return Image.fromarray((mixed * 255.0).astype(np.uint8), mode="RGB")
+
+
+def _apply_sharpness(image: Image.Image, amount: float, radius: float, threshold: int) -> Image.Image:
+    """Unsharp Mask sharpening. amount 0-2, radius 0.5-5px, threshold 0-10."""
+    if amount <= 0:
+        return image
+    percent = int(amount * 150)   # 0–2 → 0–300%
+    return image.filter(ImageFilter.UnsharpMask(
+        radius=max(0.1, radius),
+        percent=max(1, percent),
+        threshold=max(0, int(threshold)),
+    ))
+
+
+def _apply_saturation_vibrance(image: Image.Image, saturation: float, vibrance: float) -> Image.Image:
+    """Saturation: uniform chroma boost. Vibrance: smart boost for muted colors."""
+    if saturation == 0.0 and vibrance == 0.0:
+        return image
+
+    arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+    r, g, b = arr[..., 0], arr[..., 1], arr[..., 2]
+    luma = r * 0.299 + g * 0.587 + b * 0.114
+
+    # --- Saturation (uniform) ---
+    if saturation != 0.0:
+        sat_factor = 1.0 + saturation        # -1..+1 → 0..2
+        r = np.clip(luma + (r - luma) * sat_factor, 0, 1)
+        g = np.clip(luma + (g - luma) * sat_factor, 0, 1)
+        b = np.clip(luma + (b - luma) * sat_factor, 0, 1)
+
+    # --- Vibrance (stronger on muted pixels, protects saturated ones) ---
+    if vibrance != 0.0:
+        cmax = np.maximum(np.maximum(r, g), b)
+        cmin = np.minimum(np.minimum(r, g), b)
+        s = np.where(cmax > 1e-6, (cmax - cmin) / cmax, 0.0)
+        # Vibrance factor: strongest where saturation is lowest
+        vib_factor = 1.0 + vibrance * (1.0 - s)
+        r = np.clip(luma + (r - luma) * vib_factor, 0, 1)
+        g = np.clip(luma + (g - luma) * vib_factor, 0, 1)
+        b = np.clip(luma + (b - luma) * vib_factor, 0, 1)
+
+    result = np.stack([r, g, b], axis=-1)
+    return Image.fromarray((result * 255.0).round().astype(np.uint8), mode="RGB")
+
+
+def _kelvin_to_rgb_gains(kelvin: float) -> tuple:
+    """Tanner Helland algorithm: Kelvin → normalised (R,G,B) gains [0..1]."""
+    import math
+    t = max(1000.0, min(40000.0, kelvin)) / 100.0
+
+    # Red
+    if t <= 66.0:
+        r = 1.0
+    else:
+        r = 329.698727446 * ((t - 60.0) ** -0.1332047592) / 255.0
+
+    # Green
+    if t <= 66.0:
+        g = (99.4708025861 * math.log(t) - 161.1195681661) / 255.0
+    else:
+        g = 288.1221695283 * ((t - 60.0) ** -0.0755148492) / 255.0
+
+    # Blue
+    if t >= 66.0:
+        bl = 1.0
+    elif t <= 19.0:
+        bl = 0.0
+    else:
+        bl = (138.5177312231 * math.log(t - 10.0) - 305.0447927307) / 255.0
+
+    return (
+        max(0.0, min(1.0, r)),
+        max(0.0, min(1.0, g)),
+        max(0.0, min(1.0, bl)),
+    )
+
+
+def _apply_color_temperature(
+    image: Image.Image,
+    temp_kelvin: float,
+    tint: float,
+    wb_mode: str = "manual"
+) -> Image.Image:
+    """White-balance correction via Kelvin + green/magenta tint, or Auto, or Smart modes."""
+    if not wb_mode:
+        wb_mode = "manual"
+
+    if wb_mode == "manual":
+        # 6500 K = D65 neutral daylight → no-op baseline
+        if abs(temp_kelvin - 6500.0) < 10 and abs(tint) < 0.005:
+            return image
+
+        tr, tg, tb = _kelvin_to_rgb_gains(temp_kelvin)
+        nr, ng, nb = _kelvin_to_rgb_gains(6500.0)
+
+        rg = tr / max(nr, 1e-7)
+        gg = tg / max(ng, 1e-7)
+        bg = tb / max(nb, 1e-7)
+
+        arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        arr[..., 0] = np.clip(arr[..., 0] * rg, 0, 1)
+        arr[..., 1] = np.clip(arr[..., 1] * gg, 0, 1)
+        arr[..., 2] = np.clip(arr[..., 2] * bg, 0, 1)
+
+        # Tint: green(+) ↔ magenta(-) axis
+        if tint != 0.0:
+            arr[..., 1] = np.clip(arr[..., 1] * (1.0 + tint * 0.14), 0, 1)
+            arr[..., 0] = np.clip(arr[..., 0] * (1.0 - tint * 0.07), 0, 1)
+            arr[..., 2] = np.clip(arr[..., 2] * (1.0 - tint * 0.07), 0, 1)
+
+        return Image.fromarray((arr * 255.0).round().astype(np.uint8), mode="RGB")
+
+    else:
+        # Auto or Smart AWB using numpy
+        arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        r_ch, g_ch, b_ch = arr[..., 0], arr[..., 1], arr[..., 2]
+
+        if wb_mode == "smart":
+            # Compute luminance
+            luma = 0.299 * r_ch + 0.587 * g_ch + 0.114 * b_ch
+            # Compute saturation
+            max_val = np.maximum(np.maximum(r_ch, g_ch), b_ch)
+            min_val = np.minimum(np.minimum(r_ch, g_ch), b_ch)
+            sat = np.zeros_like(max_val)
+            mask_nonzero = max_val > 1e-5
+            sat[mask_nonzero] = (max_val[mask_nonzero] - min_val[mask_nonzero]) / max_val[mask_nonzero]
+
+            # Mask valid pixels: exclude too dark/bright and highly saturated pixels
+            valid_mask = (luma > 0.06) & (luma < 0.94) & (sat < 0.35)
+
+            if np.sum(valid_mask) > 100:
+                avg_r = np.mean(r_ch[valid_mask])
+                avg_g = np.mean(g_ch[valid_mask])
+                avg_b = np.mean(b_ch[valid_mask])
+            else:
+                # Fallback to standard averages if too few valid pixels
+                avg_r = np.mean(r_ch)
+                avg_g = np.mean(g_ch)
+                avg_b = np.mean(b_ch)
+        else:
+            # Standard Grey World
+            avg_r = np.mean(r_ch)
+            avg_g = np.mean(g_ch)
+            avg_b = np.mean(b_ch)
+
+        gray = (avg_r + avg_g + avg_b) / 3.0
+
+        rg = gray / max(avg_r, 1e-5)
+        gg = gray / max(avg_g, 1e-5)
+        bg = gray / max(avg_b, 1e-5)
+
+        if wb_mode == "smart":
+            # Keep 80% correction to avoid clinical neutralizing
+            rg = 1.0 + 0.8 * (rg - 1.0)
+            gg = 1.0 + 0.8 * (gg - 1.0)
+            bg = 1.0 + 0.8 * (bg - 1.0)
+            # Clip gains to robust range
+            rg = np.clip(rg, 0.65, 1.5)
+            gg = np.clip(gg, 0.65, 1.5)
+            bg = np.clip(bg, 0.65, 1.5)
+        else:
+            # Clip gains to standard range
+            rg = np.clip(rg, 0.5, 2.0)
+            gg = np.clip(gg, 0.5, 2.0)
+            bg = np.clip(bg, 0.5, 2.0)
+
+        arr[..., 0] = np.clip(r_ch * rg, 0, 1)
+        arr[..., 1] = np.clip(g_ch * gg, 0, 1)
+        arr[..., 2] = np.clip(b_ch * bg, 0, 1)
+
+        return Image.fromarray((arr * 255.0).round().astype(np.uint8), mode="RGB")
+
+
+def _generate_luminosity_masks(arr: np.ndarray, levels: int = 3) -> list[np.ndarray]:
+    """
+    Generate smooth overlapping luminosity masks.
+    For levels=3, returns [shadows, midtones, highlights].
+    """
+    luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+    if levels == 3:
+        shadows = (1.0 - luma) * (1.0 - luma)
+        highlights = luma * luma
+        midtones = 4.0 * luma * (1.0 - luma)
+        return [shadows, midtones, highlights]
+    else:
+        centers = np.linspace(0.0, 1.0, levels)
+        variance = 1.0 / (2.0 * (levels - 1)) if levels > 1 else 0.5
+        masks = []
+        for center in centers:
+            mask = np.exp(-((luma - center) ** 2) / (2.0 * (variance ** 2)))
+            masks.append(mask)
+        return masks
 
 
 def _apply_tone_adjustment(
@@ -238,20 +432,18 @@ def _apply_tone_adjustment(
         image = ImageEnhance.Contrast(image).enhance(float(contrast))
 
     arr = np.asarray(image, dtype=np.float32) / 255.0
-    luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
 
-    if light_balance != 0.0:
-        balance = float(light_balance)
-        mid_mask = 1.0 - np.abs(luma - 0.5) * 2.0
-        arr += balance * 0.10 * mid_mask[..., None]
+    if light_balance != 0.0 or highlights != 0.0 or shadows != 0.0:
+        sh_mask, mid_mask, hl_mask = _generate_luminosity_masks(arr, levels=3)
+        
+        if light_balance != 0.0:
+            arr += float(light_balance) * 0.10 * mid_mask[..., None]
 
-    if highlights != 0.0:
-        highlight_mask = np.clip((luma - 0.5) * 2.0, 0.0, 1.0)
-        arr += float(highlights) * 0.18 * highlight_mask[..., None] * (1.0 - arr)
+        if highlights != 0.0:
+            arr += float(highlights) * 0.18 * hl_mask[..., None] * (1.0 - arr)
 
-    if shadows != 0.0:
-        shadow_mask = np.clip((0.5 - luma) * 2.0, 0.0, 1.0)
-        arr += float(shadows) * 0.18 * shadow_mask[..., None] * (1.0 - arr)
+        if shadows != 0.0:
+            arr += float(shadows) * 0.18 * sh_mask[..., None] * (1.0 - arr)
 
     if warmth != 0.0:
         warm = float(warmth)
@@ -397,8 +589,262 @@ def _apply_style_fx(
         out += bloom_mask[..., None] * (0.05 + 0.08 * strength)
         return Image.fromarray((np.clip(out, 0.0, 1.0) * 255.0).round().astype(np.uint8), mode="RGB")
 
+    if mode == "RetroFilm":
+        arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        highlight_mask = np.clip((luma - 0.4) * 1.66, 0.0, 1.0)[..., None]
+        arr[..., 0] += strength * 0.15 * highlight_mask[..., 0]
+        arr[..., 1] += strength * 0.07 * highlight_mask[..., 0]
+        arr[..., 2] -= strength * 0.08 * highlight_mask[..., 0]
+        shadow_mask = np.clip((0.6 - luma) * 1.66, 0.0, 1.0)[..., None]
+        arr[..., 0] -= strength * 0.05 * shadow_mask[..., 0]
+        arr[..., 2] += strength * 0.12 * shadow_mask[..., 0]
+        arr = arr * 0.95 + 0.03 * strength
+        h, w = arr.shape[:2]
+        yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+        leak_dir = (seed % 2)
+        if leak_dir == 0:
+            gradient = np.clip(1.0 - (xx / w), 0.0, 1.0)
+        else:
+            gradient = np.clip(xx / w, 0.0, 1.0)
+        gradient = np.power(gradient, 3.5)
+        arr[..., 0] += strength * 0.35 * gradient
+        arr[..., 1] += strength * 0.12 * gradient
+        arr = np.clip(arr, 0.0, 1.0)
+        return Image.fromarray((arr * 255.0).round().astype(np.uint8), mode="RGB")
+
+    if mode == "Duotone":
+        arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        r = 0.05 * (1.0 - luma) + 0.95 * luma
+        g = 0.05 * (1.0 - luma) + 0.75 * luma
+        b = 0.25 * (1.0 - luma) + 0.25 * luma
+        duo = np.stack([r, g, b], axis=-1)
+        out = arr * (1.0 - strength) + duo * strength
+        return Image.fromarray((np.clip(out, 0.0, 1.0) * 255.0).round().astype(np.uint8), mode="RGB")
+
+    if mode == "Matte":
+        arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+        lift = 0.12 * strength
+        arr = lift + (1.0 - lift) * arr
+        arr = arr * (1.0 - 0.08 * strength)
+        arr = (arr - 0.5) * (1.0 - 0.15 * strength) + 0.5
+        return Image.fromarray((np.clip(arr, 0.0, 1.0) * 255.0).round().astype(np.uint8), mode="RGB")
+
     return image
 
+
+def _apply_color_look(image: Image.Image, look_name: str, intensity: float) -> Image.Image:
+    if intensity <= 0 or look_name == "None":
+        return image
+
+    arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+
+    if look_name == "Teal & Orange":
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        shadow_mask = np.clip((0.5 - luma) * 2.0, 0.0, 1.0)
+        arr[..., 0] -= intensity * 0.08 * shadow_mask
+        arr[..., 1] += intensity * 0.05 * shadow_mask
+        arr[..., 2] += intensity * 0.15 * shadow_mask
+        highlight_mask = np.clip((luma - 0.5) * 2.0, 0.0, 1.0)
+        arr[..., 0] += intensity * 0.15 * highlight_mask
+        arr[..., 1] += intensity * 0.06 * highlight_mask
+        arr[..., 2] -= intensity * 0.10 * highlight_mask
+
+    elif look_name == "Kodak Portra":
+        arr[..., 0] *= 1.0 + intensity * 0.05
+        arr[..., 2] *= 1.0 - intensity * 0.05
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        arr = arr * (1.0 - intensity * 0.15) + luma[..., None] * (intensity * 0.15)
+        arr = (arr - 0.5) * (1.0 - intensity * 0.08) + 0.5
+
+    elif look_name == "Fuji Superia":
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        shadow_mask = np.clip((0.45 - luma) * 2.2, 0.0, 1.0)
+        arr[..., 0] += intensity * 0.04 * shadow_mask
+        arr[..., 2] += intensity * 0.08 * shadow_mask
+        arr[..., 1] *= 1.0 + intensity * 0.08
+        arr[..., 0] *= 1.0 + intensity * 0.06
+
+    elif look_name == "Monochrome Noir":
+        luma = arr[..., 0] * 0.60 + arr[..., 1] * 0.35 + arr[..., 2] * 0.05
+        luma = np.clip((luma - 0.45) * (1.0 + intensity * 0.5) + 0.45, 0.0, 1.0)
+        bw = np.stack([luma, luma, luma], axis=-1)
+        arr = arr * (1.0 - intensity) + bw * intensity
+
+    elif look_name == "Vintage Gold":
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        arr = arr * (1.0 - intensity * 0.08) + intensity * 0.08
+        arr[..., 0] *= 1.0 + intensity * 0.12
+        arr[..., 1] *= 1.0 + intensity * 0.08
+        arr[..., 2] *= 1.0 - intensity * 0.12
+        arr = arr * (1.0 - intensity * 0.20) + luma[..., None] * (intensity * 0.20)
+
+    elif look_name == "Cyberpunk":
+        luma = arr[..., 0] * 0.299 + arr[..., 1] * 0.587 + arr[..., 2] * 0.114
+        shadow_mask = np.clip((0.5 - luma) * 2.0, 0.0, 1.0)
+        arr[..., 0] += intensity * 0.16 * shadow_mask
+        arr[..., 2] += intensity * 0.16 * shadow_mask
+        arr[..., 1] -= intensity * 0.08 * shadow_mask
+        highlight_mask = np.clip((luma - 0.5) * 2.0, 0.0, 1.0)
+        arr[..., 0] -= intensity * 0.12 * highlight_mask
+        arr[..., 1] += intensity * 0.16 * highlight_mask
+        arr[..., 2] += intensity * 0.16 * highlight_mask
+
+    return Image.fromarray((np.clip(arr, 0.0, 1.0) * 255.0).round().astype(np.uint8), mode="RGB")
+
+
+
+def _rgb_to_lab(img_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Convert RGB image to OpenCV's 8-bit LAB representation (L, a, b in [0, 255]).
+    img_rgb is a numpy array of shape (H, W, 3) and dtype uint8 or float32.
+    """
+    arr = img_rgb.astype(np.float32)
+    if arr.max() > 1.0:
+        arr = arr / 255.0
+
+    # sRGB linearization
+    mask = arr > 0.04045
+    arr_linear = np.empty_like(arr)
+    arr_linear[mask] = ((arr[mask] + 0.055) / 1.055) ** 2.4
+    arr_linear[~mask] = arr[~mask] / 12.92
+
+    # RGB to XYZ
+    r, g, b = arr_linear[..., 0], arr_linear[..., 1], arr_linear[..., 2]
+    # D65 white point normalized coordinates
+    x = (r * 0.4124564 + g * 0.3575761 + b * 0.1804375) / 0.95047
+    y = (r * 0.2126729 + g * 0.7151522 + b * 0.0721750) / 1.00000
+    z = (r * 0.0193339 + g * 0.1191920 + b * 0.9503041) / 1.08883
+
+    # Clamp XYZ to avoid negative values
+    x = np.maximum(x, 0.0)
+    y = np.maximum(y, 0.0)
+    z = np.maximum(z, 0.0)
+
+    # Nonlinear transformation f(t)
+    def f(t):
+        mask_t = t > 0.008856
+        res = np.empty_like(t)
+        res[mask_t] = np.cbrt(t[mask_t])
+        res[~mask_t] = 7.787 * t[~mask_t] + 16.0 / 116.0
+        return res
+
+    fx = f(x)
+    fy = f(y)
+    fz = f(z)
+
+    # Standard LAB
+    L = 116.0 * fy - 16.0
+    a = 500.0 * (fx - fy)
+    b = 200.0 * (fy - fz)
+
+    # Scale to OpenCV 8-bit LAB representation [0, 255]
+    L_cv = L * (255.0 / 100.0)
+    a_cv = a + 128.0
+    b_cv = b + 128.0
+
+    return L_cv, a_cv, b_cv
+
+
+def _lab_to_rgb(L_cv: np.ndarray, a_cv: np.ndarray, b_cv: np.ndarray) -> np.ndarray:
+    """
+    Convert OpenCV's 8-bit LAB representation (L, a, b in [0, 255]) back to RGB.
+    Returns RGB image as float32 numpy array with values in [0, 255].
+    """
+    # Scale from OpenCV 8-bit LAB to Standard LAB
+    L = L_cv * (100.0 / 255.0)
+    a = a_cv - 128.0
+    b = b_cv - 128.0
+
+    y = (L + 16.0) / 116.0
+    x = a / 500.0 + y
+    z = y - b / 200.0
+
+    def f_inv(t):
+        t3 = t ** 3
+        mask_t = t3 > 0.008856
+        res = np.empty_like(t)
+        res[mask_t] = t3[mask_t]
+        res[~mask_t] = (t[~mask_t] - 16.0 / 116.0) / 7.787
+        return res
+
+    x_norm = f_inv(x) * 0.95047
+    y_norm = f_inv(y) * 1.00000
+    z_norm = f_inv(z) * 1.08883
+
+    # XYZ to linear RGB
+    r_linear = x_norm * 3.2404542 + y_norm * -1.5371385 + z_norm * -0.4985314
+    g_linear = x_norm * -0.9692660 + y_norm * 1.8760108 + z_norm * 0.0415560
+    b_linear = x_norm * 0.0556434 + y_norm * -0.2040259 + z_norm * 1.0572252
+
+    # Clip linear RGB to [0, 1]
+    r_linear = np.clip(r_linear, 0.0, 1.0)
+    g_linear = np.clip(g_linear, 0.0, 1.0)
+    b_linear = np.clip(b_linear, 0.0, 1.0)
+
+    # linear RGB to sRGB
+    def to_srgb(c):
+        mask_c = c > 0.0031308
+        res = np.empty_like(c)
+        res[mask_c] = 1.055 * (c[mask_c] ** (1.0 / 2.4)) - 0.055
+        res[~mask_c] = 12.92 * c[~mask_c]
+        return res
+
+    r = to_srgb(r_linear)
+    g = to_srgb(g_linear)
+    b = to_srgb(b_linear)
+
+    rgb = np.stack([r, g, b], axis=-1)
+    return np.clip(rgb * 255.0, 0.0, 255.0)
+
+
+def _apply_style_transfer(image: Image.Image, ref_stats: dict, intensity: float) -> Image.Image:
+    if intensity <= 0 or not ref_stats:
+        return image
+    
+    # Convert image to numpy RGB
+    arr = np.asarray(image.convert("RGB"), dtype=np.uint8)
+    
+    # Convert to LAB
+    l, a, b = _rgb_to_lab(arr)
+    
+    # Target (source) stats
+    l_mean_src, l_std_src = l.mean(), l.std()
+    a_mean_src, a_std_src = a.mean(), a.std()
+    b_mean_src, b_std_src = b.mean(), b.std()
+    
+    # Reference stats
+    l_mean_ref = ref_stats.get("l_mean", l_mean_src)
+    l_std_ref = ref_stats.get("l_std", l_std_src)
+    a_mean_ref = ref_stats.get("a_mean", a_mean_src)
+    a_std_ref = ref_stats.get("a_std", a_std_src)
+    b_mean_ref = ref_stats.get("b_mean", b_mean_src)
+    b_std_ref = ref_stats.get("b_std", b_std_src)
+    
+    # Avoid division by zero
+    l_std_src = max(l_std_src, 1e-4)
+    a_std_src = max(a_std_src, 1e-4)
+    b_std_src = max(b_std_src, 1e-4)
+    
+    # Reinhard transfer
+    l_out = (l - l_mean_src) * (l_std_ref / l_std_src) + l_mean_ref
+    a_out = (a - a_mean_src) * (a_std_ref / a_std_src) + a_mean_ref
+    b_out = (b - b_mean_src) * (b_std_ref / b_std_src) + b_mean_ref
+    
+    # Clip and convert back to RGB
+    l_out = np.clip(l_out, 0, 255)
+    a_out = np.clip(a_out, 0, 255)
+    b_out = np.clip(b_out, 0, 255)
+    
+    out_rgb = _lab_to_rgb(l_out, a_out, b_out)
+    
+    # Blend with original based on intensity
+    if intensity < 1.0:
+        out_rgb = arr.astype(np.float32) * (1.0 - intensity) + out_rgb * intensity
+        out_rgb = np.clip(out_rgb, 0, 255)
+        
+    return Image.fromarray(out_rgb.astype(np.uint8), mode="RGB")
 
 def _available_lut_files() -> list[str]:
     if not os.path.isdir(LUT_DIRECTORY):
@@ -523,18 +969,21 @@ def _apply_lut(image: Image.Image, lut_path: str, intensity: float) -> Image.Ima
     return Image.fromarray((mixed * 255.0).round().astype(np.uint8), mode="RGB")
 
 
-def _load_via_pillow(path: str) -> tuple[torch.Tensor | None, bytes]:
+def _load_via_pillow(path: str) -> tuple:
     image = Image.open(path).convert("RGB")
     exif_bytes = image.info.get("exif", b"")
-    return _pil_to_tensor(image).unsqueeze(0), exif_bytes
+    arr = np.asarray(image, dtype=np.float32) / 255.0
+    return arr[np.newaxis, ...], exif_bytes
 
 
-def _load_via_rawpy(path: str) -> torch.Tensor:
+def _load_via_rawpy(path: str) -> np.ndarray:
     if not RAW_SUPPORT:
         raise RuntimeError("rawpy is not installed.")
     with rawpy.imread(path) as raw:
         rgb = raw.postproc()
-    return _pil_to_tensor(Image.fromarray(rgb)).unsqueeze(0)
+    arr = np.asarray(Image.fromarray(rgb), dtype=np.float32) / 255.0
+    return arr[np.newaxis, ...]
+
 
 
 class OneArtPhotoNoise:
@@ -1014,6 +1463,68 @@ class OneArtPhotoAllInOne:
         return (torch.stack(output, dim=0),)
 
 
+class OneArtPhotoSplitToning:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "shadow_color": ("STRING", {"default": "#102040"}),
+                "highlight_color": ("STRING", {"default": "#ffaa20"}),
+                "balance": ("FLOAT", {"default": 0.0, "min": -1.0, "max": 1.0, "step": 0.01}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "apply"
+    CATEGORY = "oneart/photo"
+
+    def apply(self, images, shadow_color, highlight_color, balance):
+        images = _ensure_batch(images)
+        output = []
+        for index in range(images.shape[0]):
+            arr = np.asarray(_tensor_to_pil(images[index]), dtype=np.uint8)
+            toned = _apply_split_toning(arr, shadow_color, highlight_color, balance)
+            output.append(_pil_to_tensor(Image.fromarray(toned)))
+        return (torch.stack(output, dim=0),)
+
+
+class OneArtPhotoGradientMap:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+                "preset": (["Sunset", "Forest", "Cyberpunk", "Vintage", "B&W"], {"default": "Sunset"}),
+                "intensity": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "apply"
+    CATEGORY = "oneart/photo"
+
+    def apply(self, images, preset, intensity):
+        presets = {
+            "Sunset": [(0.07, 0.05, 0.18), (0.87, 0.25, 0.2), (1.0, 0.77, 0.35)],
+            "Forest": [(0.05, 0.08, 0.05), (0.35, 0.45, 0.25), (0.9, 0.92, 0.8)],
+            "Cyberpunk": [(0.05, 0.0, 0.15), (0.9, 0.0, 0.5), (0.0, 0.95, 1.0)],
+            "Vintage": [(0.12, 0.07, 0.05), (0.68, 0.52, 0.35), (0.95, 0.92, 0.85)],
+            "B&W": [(0.0, 0.0, 0.0), (1.0, 1.0, 1.0)]
+        }
+        colors = presets.get(preset, presets["Sunset"])
+        
+        images = _ensure_batch(images)
+        output = []
+        for index in range(images.shape[0]):
+            image = _tensor_to_pil(images[index])
+            arr = np.asarray(image, dtype=np.uint8)
+            mapped = _apply_gradient_map(arr, colors)
+            if intensity < 1.0:
+                mapped = (arr.astype(np.float32) * (1.0 - intensity) + mapped.astype(np.float32) * intensity).clip(0, 255).astype(np.uint8)
+            output.append(_pil_to_tensor(Image.fromarray(mapped)))
+        return (torch.stack(output, dim=0),)
+
 NODE_CLASS_MAPPINGS = {
     "OneArtPhotoNoise": OneArtPhotoNoise,
     "OneArtPhotoToneAdjust": OneArtPhotoToneAdjust,
@@ -1028,6 +1539,8 @@ NODE_CLASS_MAPPINGS = {
     "OneArtPhotoSaveRaw": OneArtPhotoSaveRaw,
     "OneArtPhotoSensorNoise": OneArtPhotoSensorNoise,
     "OneArtPhotoAllInOne": OneArtPhotoAllInOne,
+    "OneArtPhotoSplitToning": OneArtPhotoSplitToning,
+    "OneArtPhotoGradientMap": OneArtPhotoGradientMap,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -1044,4 +1557,283 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "OneArtPhotoSaveRaw": "OneArt Photo Save RAW",
     "OneArtPhotoSensorNoise": "OneArt Photo Sensor Noise",
     "OneArtPhotoAllInOne": "OneArt Photo All In One",
+    "OneArtPhotoSplitToning": "OneArt Photo Split Toning",
+    "OneArtPhotoGradientMap": "OneArt Photo Gradient Map",
 }
+
+
+def _apply_split_toning(
+    arr: np.ndarray, 
+    shadow_color: tuple[float, float, float] | list[float] | str, 
+    highlight_color: tuple[float, float, float] | list[float] | str, 
+    balance: float
+) -> np.ndarray:
+    """
+    Apply split-toning using a smooth luminance mask.
+    Accepts hex colors (str) or RGB tuples/lists.
+    """
+    is_uint8 = arr.dtype == np.uint8
+    working_arr = arr.astype(np.float32) / 255.0 if is_uint8 else arr.copy()
+    
+    # Helper to parse colors
+    def parse_color(c) -> np.ndarray:
+        if isinstance(c, str):
+            c = c.lstrip('#')
+            if len(c) == 6:
+                return np.array([int(c[i:i+2], 16) for i in (0, 2, 4)], dtype=np.float32) / 255.0
+        return np.array(c, dtype=np.float32) / (255.0 if np.array(c).max() > 1.0 else 1.0)
+        
+    sh_color = parse_color(shadow_color)
+    hl_color = parse_color(highlight_color)
+    
+    # Calculate luminance
+    luma = working_arr[..., 0] * 0.299 + working_arr[..., 1] * 0.587 + working_arr[..., 2] * 0.114
+    
+    # Shift balance
+    luma_shifted = np.clip(luma - balance * 0.2, 0.0, 1.0)
+    highlight_mask = luma_shifted * luma_shifted
+    shadow_mask = (1.0 - luma_shifted) * (1.0 - luma_shifted)
+    
+    # Blend tinting
+    shadow_tint = working_arr * sh_color
+    highlight_tint = working_arr * hl_color
+    
+    blended = working_arr.copy()
+    blended = blended * (1.0 - shadow_mask[..., None]) + shadow_tint * shadow_mask[..., None]
+    blended = blended * (1.0 - highlight_mask[..., None]) + highlight_tint * highlight_mask[..., None]
+    
+    # Preserve original luminance to prevent brightness changes
+    luma_new = blended[..., 0] * 0.299 + blended[..., 1] * 0.587 + blended[..., 2] * 0.114
+    luma_ratio = np.where(luma_new > 1e-5, luma / luma_new, 1.0)[..., None]
+    blended = np.clip(blended * luma_ratio, 0.0, 1.0)
+    
+    return (blended * 255.0).round().astype(np.uint8) if is_uint8 else blended
+
+
+def _apply_gradient_map(arr: np.ndarray, gradient_colors: list[tuple[float, float, float]]) -> np.ndarray:
+    n_colors = len(gradient_colors)
+    if n_colors < 2:
+        return arr
+        
+    is_uint8 = arr.dtype == np.uint8
+    working_arr = arr.astype(np.float32) / 255.0 if is_uint8 else arr.copy()
+    
+    luma = working_arr[..., 0] * 0.299 + working_arr[..., 1] * 0.587 + working_arr[..., 2] * 0.114
+    colors_arr = np.array(gradient_colors, dtype=np.float32)
+    if colors_arr.max() > 1.0:
+        colors_arr /= 255.0
+        
+    xp = np.linspace(0.0, 1.0, n_colors)
+    r_mapped = np.interp(luma, xp, colors_arr[:, 0])
+    g_mapped = np.interp(luma, xp, colors_arr[:, 1])
+    b_mapped = np.interp(luma, xp, colors_arr[:, 2])
+    
+    mapped_arr = np.stack([r_mapped, g_mapped, b_mapped], axis=-1)
+    
+    return (mapped_arr * 255.0).round().astype(np.uint8) if is_uint8 else mapped_arr
+
+
+def _calculate_color_covariance_transfer(src_arr: np.ndarray, ref_stats: dict) -> np.ndarray:
+    src_rgb = src_arr.astype(np.uint8) if src_arr.dtype != np.uint8 else src_arr
+    
+    # Convert to LAB using existing methods in nodes.py
+    src_l, src_a, src_b = _rgb_to_lab(src_rgb)
+    
+    src_pixels = np.stack([src_l.ravel(), src_a.ravel(), src_b.ravel()], axis=0)
+    src_mean = src_pixels.mean(axis=1, keepdims=True)
+    src_cov = np.cov(src_pixels) + 1e-5 * np.eye(3)
+    
+    # Reference stats
+    ref_mean = np.array([
+        [ref_stats.get("l_mean", src_mean[0, 0])],
+        [ref_stats.get("a_mean", src_mean[1, 0])],
+        [ref_stats.get("b_mean", src_mean[2, 0])]
+    ], dtype=np.float32)
+    
+    if "cov_matrix" in ref_stats:
+        ref_cov = np.array(ref_stats["cov_matrix"], dtype=np.float32)
+    else:
+        # Fallback to standard deviations if covariance matrix is not stored
+        ref_std = np.array([
+            ref_stats.get("l_std", 15.0),
+            ref_stats.get("a_std", 5.0),
+            ref_stats.get("b_std", 5.0)
+        ], dtype=np.float32)
+        ref_cov = np.diag(ref_std ** 2) + 1e-5 * np.eye(3)
+        
+    def matrix_sqrt_and_inv_sqrt(cov):
+        evals, evecs = np.linalg.eigh(cov)
+        evals = np.maximum(evals, 1e-6)
+        sqrt_evals = np.sqrt(evals)
+        cov_sqrt = evecs @ np.diag(sqrt_evals) @ evecs.T
+        cov_inv_sqrt = evecs @ np.diag(1.0 / sqrt_evals) @ evecs.T
+        return cov_sqrt, cov_inv_sqrt
+
+    ref_sqrt, _ = matrix_sqrt_and_inv_sqrt(ref_cov)
+    _, src_inv_sqrt = matrix_sqrt_and_inv_sqrt(src_cov)
+    
+    T = ref_sqrt @ src_inv_sqrt
+    trans_pixels = T @ (src_pixels - src_mean) + ref_mean
+    
+    h, w = src_l.shape
+    l_out = np.clip(trans_pixels[0].reshape((h, w)), 0.0, 255.0)
+    a_out = np.clip(trans_pixels[1].reshape((h, w)), 0.0, 255.0)
+    b_out = np.clip(trans_pixels[2].reshape((h, w)), 0.0, 255.0)
+    
+    out_rgb = _lab_to_rgb(l_out, a_out, b_out)
+    return np.clip(out_rgb, 0.0, 255.0).astype(np.uint8)
+
+
+def _apply_radial_chromatic_aberration(arr: np.ndarray, strength: float, center: tuple[float, float] = (0.5, 0.5)) -> np.ndarray:
+    if strength == 0.0:
+        return arr
+        
+    is_uint8 = arr.dtype == np.uint8
+    working_arr = arr.astype(np.float32) / 255.0 if is_uint8 else arr.copy()
+    h, w, c = working_arr.shape
+    cy, cx = center[1] * h, center[0] * w
+    
+    yy, xx = np.mgrid[0:h, 0:w]
+    dy, dx = yy - cy, xx - cx
+    r = np.sqrt(dx*dx + dy*dy)
+    max_r = np.sqrt(cx*cx + cy*cy)
+    if max_r == 0: max_r = 1.0
+    
+    try:
+        from scipy.ndimage import map_coordinates
+        # Subpixel mapping
+        r_scale = 1.0 + strength * 0.04 * (r / max_r)
+        ry, rx = cy + dy * r_scale, cx + dx * r_scale
+        coords_r = np.stack([ry.ravel(), rx.ravel()], axis=0)
+        red = map_coordinates(working_arr[..., 0], coords_r, order=1, mode='nearest').reshape((h, w))
+        
+        b_scale = 1.0 - strength * 0.04 * (r / max_r)
+        by, bx = cy + dy * b_scale, cx + dx * b_scale
+        coords_b = np.stack([by.ravel(), bx.ravel()], axis=0)
+        blue = map_coordinates(working_arr[..., 2], coords_b, order=1, mode='nearest').reshape((h, w))
+        
+        out = np.stack([red, working_arr[..., 1], blue], axis=-1)
+    except ImportError:
+        # Nearest neighbor lookup fallback
+        r_scale = 1.0 + strength * 0.04 * (r / max_r)
+        rx = np.clip(cx + dx * r_scale, 0, w - 1).astype(np.int32)
+        ry = np.clip(cy + dy * r_scale, 0, h - 1).astype(np.int32)
+        
+        b_scale = 1.0 - strength * 0.04 * (r / max_r)
+        bx = np.clip(cx + dx * b_scale, 0, w - 1).astype(np.int32)
+        by = np.clip(cy + dy * b_scale, 0, h - 1).astype(np.int32)
+        
+        out = working_arr.copy()
+        out[..., 0] = working_arr[ry, rx, 0]
+        out[..., 2] = working_arr[by, bx, 2]
+        
+    return (np.clip(out, 0.0, 1.0) * 255.0).round().astype(np.uint8) if is_uint8 else np.clip(out, 0.0, 1.0)
+
+def _apply_curves(image: Image.Image, curves: dict) -> Image.Image:
+    """Apply RGB and channel tone curves using numpy interpolation."""
+    if not curves:
+        return image
+    
+    arr = np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0
+    xp = np.linspace(0.0, 1.0, 256)
+    
+    c_red = curves.get("red")
+    c_green = curves.get("green")
+    c_blue = curves.get("blue")
+    c_rgb = curves.get("rgb")
+    
+    # Apply individual channel curves
+    if c_red and len(c_red) == 256:
+        fp_r = np.array(c_red, dtype=np.float32) / 255.0
+        arr[..., 0] = np.interp(arr[..., 0], xp, fp_r)
+        
+    if c_green and len(c_green) == 256:
+        fp_g = np.array(c_green, dtype=np.float32) / 255.0
+        arr[..., 1] = np.interp(arr[..., 1], xp, fp_g)
+        
+    if c_blue and len(c_blue) == 256:
+        fp_b = np.array(c_blue, dtype=np.float32) / 255.0
+        arr[..., 2] = np.interp(arr[..., 2], xp, fp_b)
+        
+    # Apply master RGB curve
+    if c_rgb and len(c_rgb) == 256:
+        fp_rgb = np.array(c_rgb, dtype=np.float32) / 255.0
+        for channel in range(3):
+            arr[..., channel] = np.interp(arr[..., channel], xp, fp_rgb)
+            
+    arr = np.clip(arr * 255.0, 0, 255).round().astype(np.uint8)
+    return Image.fromarray(arr, mode="RGB")
+
+
+def export_3d_lut(params: dict, out_path: str) -> None:
+    """
+    Generate a 3D LUT by passing a 3D RGB grid through the color grading pipeline,
+    and save it in Adobe .cube format.
+    """
+    lut_size = 32
+    grid = np.mgrid[0:lut_size, 0:lut_size, 0:lut_size].astype(np.float32) / (lut_size - 1)
+    
+    b_ch, g_ch, r_ch = grid[2], grid[1], grid[0]
+    rgb_flat = np.stack([r_ch, g_ch, b_ch], axis=-1).reshape(-1, 3)
+    
+    arr_3d = rgb_flat.reshape(lut_size, lut_size * lut_size, 3)
+    arr_uint8 = (arr_3d * 255.0).round().astype(np.uint8)
+    image = Image.fromarray(arr_uint8, mode="RGB")
+    
+    # 1. LUT Look
+    lut_look = params.get("lut_look", "None")
+    lut_intensity = float(params.get("lut_intensity", 0.0))
+    if lut_look != "None" and lut_intensity > 0:
+        image = _apply_color_look(image, lut_look, lut_intensity)
+
+    # 2. Color Temperature / White Balance
+    if params.get("whitebalance_enabled", True):
+        image = _apply_color_temperature(
+            image,
+            temp_kelvin=float(params.get("color_temp", 6500.0)),
+            tint=float(params.get("color_tint", 0.0)),
+            wb_mode=str(params.get("whitebalance_mode", "manual")),
+        )
+
+    # 3. Tone Adjust
+    image = _apply_tone_adjustment(
+        image,
+        brightness=float(params.get("brightness", 1.16)),
+        contrast=float(params.get("contrast", 1.01)),
+        light_balance=float(params.get("light_balance", 0.36)),
+        highlights=float(params.get("highlights", 0.53)),
+        shadows=float(params.get("shadows", -0.02)),
+        warmth=float(params.get("warmth", 0.04)),
+    )
+
+    # 4. Saturation + Vibrance
+    if params.get("saturation_enabled", True):
+        image = _apply_saturation_vibrance(
+            image,
+            saturation=float(params.get("saturation", 0.0)),
+            vibrance=float(params.get("vibrance", 0.0)),
+        )
+
+    # 5. Tone Curves (v6.0)
+    if params.get("curves_enabled", False) and params.get("curves"):
+        image = _apply_curves(image, params.get("curves"))
+
+    # 6. Style Transfer (v5.1)
+    if params.get("style_transfer_enabled", False) and params.get("style_transfer_stats") is not None and params.get("style_transfer_mode", "pixel") == "pixel":
+        image = _apply_style_transfer(
+            image, 
+            params.get("style_transfer_stats"), 
+            float(params.get("style_transfer_intensity", 1.0))
+        )
+        
+    res_arr = np.asarray(image, dtype=np.float32) / 255.0
+    res_flat = res_arr.reshape(-1, 3)
+    
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("# Generated by OneArt Photo Studio v6.0\n")
+        f.write(f"LUT_3D_SIZE {lut_size}\n\n")
+        for i in range(res_flat.shape[0]):
+            r, g, b = res_flat[i]
+            f.write(f"{r:.6f} {g:.6f} {b:.6f}\n")
+
+

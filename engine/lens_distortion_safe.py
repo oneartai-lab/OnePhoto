@@ -1,25 +1,9 @@
 from __future__ import annotations
 
 import numpy as np
-import torch
 from PIL import Image, ImageFilter
 
 _RESAMPLE = getattr(Image, "Resampling", Image)
-
-
-def _tensor_to_pil(image_tensor: torch.Tensor) -> Image.Image:
-    if image_tensor.is_cuda:
-        image_tensor = image_tensor.detach().cpu()
-    if image_tensor.ndim == 4:
-        if image_tensor.shape[0] != 1:
-            raise ValueError("Expected a batch of size 1 for lens warp.")
-        image_tensor = image_tensor[0]
-    array = torch.clamp(image_tensor, 0.0, 1.0).numpy()
-    return Image.fromarray((array * 255.0).round().astype(np.uint8), mode="RGB")
-
-
-def _pil_to_tensor(image: Image.Image) -> torch.Tensor:
-    return torch.from_numpy(np.asarray(image.convert("RGB"), dtype=np.float32) / 255.0)
 
 
 def _sample_bilinear(array: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -77,50 +61,5 @@ def _warp(array: np.ndarray, distortion: float, aberration: float) -> np.ndarray
     return np.clip(warped, 0, 255).astype(np.uint8)
 
 
-class OneArtPhotoLensWarp:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE",),
-                "distortion": ("FLOAT", {"default": -0.18, "min": -1.0, "max": 1.0, "step": 0.01}),
-                "chromatic_aberration": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 5.0, "step": 0.01}),
-                "edge_softness": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 1.0, "step": 0.01}),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "apply"
-    CATEGORY = "oneart/photo"
-
-    def apply(self, images, distortion, chromatic_aberration, edge_softness):
-        if images.ndim == 3:
-            images = images.unsqueeze(0)
-        output = []
-        for index in range(images.shape[0]):
-            image = _tensor_to_pil(images[index])
-            array = np.asarray(image, dtype=np.float32)
-            warped = _warp(array, distortion, chromatic_aberration)
-            image = Image.fromarray(warped, mode="RGB")
-            if edge_softness > 0:
-                blurred = image.filter(ImageFilter.GaussianBlur(radius=max(0.1, edge_softness * 12.0)))
-                mask = Image.new("L", image.size, 0)
-                mask_array = np.zeros((image.size[1], image.size[0]), dtype=np.float32)
-                yy, xx = np.mgrid[0:image.size[1], 0:image.size[0]].astype(np.float32)
-                nx = (xx - image.size[0] / 2.0) / (image.size[0] / 2.0)
-                ny = (yy - image.size[1] / 2.0) / (image.size[1] / 2.0)
-                radius = np.sqrt(nx * nx + ny * ny)
-                falloff = np.clip(1.0 - (radius ** 2) * (0.55 + edge_softness), 0.0, 1.0)
-                mask = Image.fromarray((falloff * 255.0).astype(np.uint8), mode="L").filter(ImageFilter.GaussianBlur(radius=max(0.1, edge_softness * 20.0)))
-                image = Image.composite(image, blurred, mask)
-            output.append(_pil_to_tensor(image))
-        return (torch.stack(output, dim=0),)
-
-
-NODE_CLASS_MAPPINGS = {
-    "OneArtPhotoLensWarp": OneArtPhotoLensWarp,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "OneArtPhotoLensWarp": "OneArt Photo Lens Warp",
-}
+NODE_CLASS_MAPPINGS = {}
+NODE_DISPLAY_NAME_MAPPINGS = {}

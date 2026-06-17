@@ -18,6 +18,11 @@ venv/
 ENV/
 
 # Output / generated files
+storage/
+*.bak
+*.bak*
+*.lnk
+launcher_error.txt
 output/
 *.jpg
 *.jpeg

@@ -5,3 +5,5 @@ piexif
 pillow-heif
 rawpy
 tifffile
+fastapi
+uvicorn

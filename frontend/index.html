@@ -1,9 +1,14 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>OneArt Photo Studio</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -26,10 +31,17 @@
         <path d="M10 30 Q14 23, 20 26 Q26 29, 30 22" stroke="url(#logoGrad)" stroke-width="2" fill="none" stroke-linecap="round"/>
         <circle cx="28" cy="10" r="2.5" fill="url(#logoGrad)"/>
       </svg>
-      <h1 class="app-title">OneArt <span class="title-accent">Photo Studio</span></h1>
+      <h1 class="app-title">OneArt <span class="title-accent" data-i18n="appTitle">Photo Studio</span></h1>
     </div>
     <div class="header-right">
-      <span class="version-badge">v1.0</span>
+      <div class="lang-switcher">
+        <button class="lang-btn active" data-lang="en">EN</button>
+        <button class="lang-btn" data-lang="ru">RU</button>
+      </div>
+      <span class="version-badge">v7.0</span>
+      <button class="info-btn" id="btnInfo" data-i18n-title="btnInfoTitle" title="Show Features Info">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </button>
     </div>
   </header>
 
@@ -40,38 +52,107 @@
     <section class="image-panel">
       <div id="uploadZone" class="upload-zone">
         <input type="file" id="fileInput" accept="image/*" hidden>
+        <input type="file" id="batchFileInput" accept="image/*" multiple hidden>
         <div class="upload-content" id="uploadContent">
           <svg class="upload-icon" viewBox="0 0 64 64" width="56" height="56" fill="none">
             <rect x="4" y="4" width="56" height="56" rx="14" stroke="#888898" stroke-width="2" stroke-dasharray="6 4"/>
             <path d="M32 20v18M24 30l8-10 8 10" stroke="#f0a030" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M20 42h24" stroke="#888898" stroke-width="2" stroke-linecap="round"/>
           </svg>
-          <p class="upload-title">Drop your photo here</p>
-          <p class="upload-hint">or click to browse &middot; JPG, PNG, TIFF, WebP</p>
+          <p class="upload-title" data-i18n="dropTitle">Drop your photo here</p>
+          <p class="upload-hint" data-i18n="dropHint">or click to browse &middot; JPG, PNG, TIFF, WebP</p>
         </div>
       </div>
 
       <!-- Image Preview (hidden until image loaded) -->
       <div id="previewContainer" class="preview-container hidden">
-        <div class="comparison-wrapper" id="comparisonWrapper">
-          <img id="previewImage" class="preview-img" alt="Original">
-          <img id="resultImage" class="preview-img result-img hidden" alt="Processed">
-          <div id="comparisonSlider" class="comparison-slider hidden">
-            <div class="comparison-line"></div>
-            <div class="comparison-handle">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
-                <path d="M8 5l-5 7 5 7M16 5l5 7-5 7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
+        <div class="comparison-viewport" id="comparisonViewport">
+          <div class="comparison-wrapper" id="comparisonWrapper">
+            <img id="previewImage" class="preview-img" alt="Original" draggable="false">
+            <img id="resultImage" class="preview-img result-img hidden" alt="Processed" draggable="false">
+            <canvas id="webglPreviewCanvas" class="preview-img result-img hidden" style="pointer-events: none;"></canvas>
+            
+            <!-- Crop Box Overlay -->
+            <div id="cropBox" class="crop-box hidden">
+              <div class="crop-grid-line h1"></div>
+              <div class="crop-grid-line h2"></div>
+              <div class="crop-grid-line v1"></div>
+              <div class="crop-grid-line v2"></div>
+              <div class="crop-handle tl"></div>
+              <div class="crop-handle tr"></div>
+              <div class="crop-handle bl"></div>
+              <div class="crop-handle br"></div>
             </div>
-          </div>
-          <div class="comparison-labels hidden" id="comparisonLabels">
-            <span class="label-before">BEFORE</span>
-            <span class="label-after">AFTER</span>
+
+            <div id="comparisonSlider" class="comparison-slider hidden">
+              <div class="comparison-line"></div>
+              <div class="comparison-handle">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none">
+                  <path d="M8 5l-5 7 5 7M16 5l5 7-5 7" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </div>
+            </div>
+            <div class="comparison-labels hidden" id="comparisonLabels">
+              <span class="label-before" data-i18n="beforeLabel">BEFORE</span>
+              <span class="label-after" data-i18n="afterLabel">AFTER</span>
+            </div>
           </div>
         </div>
         <div class="preview-toolbar">
-          <button class="tool-btn" id="btnRemoveImage" title="Remove image">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M4 4l12 12M16 4L4 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <div class="toolbar-left">
+            <button class="tool-btn" id="btnUndo" title="Undo (Ctrl+Z)" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/></svg>
+              <span class="undo-count"></span>
+            </button>
+            <button class="tool-btn" id="btnRedo" title="Redo (Ctrl+Y / Ctrl+Shift+Z)" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.7"/></svg>
+              <span class="undo-count"></span>
+            </button>
+            <span class="toolbar-separator"></span>
+            <button class="tool-btn active" id="btnCompareSplit" title="Split Slider Compare">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M22 5h-4a4 4 0 00-4 4v6a4 4 0 004 4h4M2 5h4a4 4 0 014 4v6a4 4 0 01-4 4H2"/></svg>
+            </button>
+            <button class="tool-btn" id="btnCompareSide" title="Side by Side Compare">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="9" height="18" rx="2" ry="2"/><rect x="13" y="3" width="9" height="18" rx="2" ry="2"/></svg>
+            </button>
+            <button class="tool-btn" id="btnCompareHold" title="Hold Hover to Compare">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+            <span class="toolbar-separator"></span>
+            <button class="tool-btn" id="btnResetZoom" title="Reset Zoom">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
+            </button>
+          </div>
+          <div class="toolbar-right">
+            <button class="tool-btn btn-remove" id="btnRemoveImage" title="Remove image" data-i18n-title="btnRemove">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M4 4l12 12M16 4L4 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Batch Queue Panel -->
+      <div id="batchContainer" class="batch-container hidden">
+        <div class="batch-header-bar">
+          <h2 data-i18n="batchTitle">Batch Processing Queue</h2>
+          <div class="batch-actions">
+            <button class="btn btn-small" id="btnClearBatch" data-i18n="btnClearBatch">Clear All</button>
+            <button class="btn btn-small btn-primary" id="btnSelectBatchFiles" data-i18n="btnSelectBatchFiles">Add Files</button>
+          </div>
+        </div>
+        <div class="batch-grid" id="batchGrid">
+          <!-- Populated with batch item cards -->
+        </div>
+        <div class="batch-status-panel">
+          <div class="batch-progress-wrapper hidden" id="batchProgressWrapper">
+            <div class="batch-progress-bar-bg">
+              <div class="batch-progress-bar" id="batchProgressBar" style="width: 0%;"></div>
+            </div>
+            <span class="batch-progress-text" id="batchProgressText">Processed 0 of 0 files</span>
+          </div>
+          <button class="btn btn-process" id="btnProcessBatch" disabled>
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" style="margin-right: 6px;"><path d="M10 2v4l3-2-3-2zM18 10h-4l2 3 2-3zM10 18v-4l-3 2 3 2zM2 10h4l-2-3-2 3z" fill="currentColor"/><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
+            <span data-i18n="btnProcessBatch">Run Batch Process</span>
           </button>
         </div>
       </div>
@@ -81,27 +162,265 @@
     <aside class="settings-panel" id="settingsPanel">
       <div class="settings-scroll">
 
-        <!-- ── NOISE ── -->
-        <div class="section" data-section="noise">
+        <!-- ── PRESETS ── -->
+        <div class="section" data-section="presets">
           <button class="section-header" aria-expanded="true">
             <span class="section-icon">
-              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="14" cy="3" r="1" fill="currentColor"/><circle cx="9" cy="10" r="1.5" fill="currentColor"/><circle cx="3" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/><circle cx="10" cy="17" r="1" fill="currentColor"/><circle cx="17" cy="18" r="1" fill="currentColor"/></svg>
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M4 3h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2z" stroke="currentColor" stroke-width="1.5"/><path d="M8 8l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
-            <span class="section-title">Noise</span>
+            <span class="section-title" data-i18n="secPresets">Presets</span>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Noise Level<span class="val" id="val_noise_level">0.02</span></label>
+              <label data-i18n="lblSelectPreset">Select Preset</label>
+              <select class="select-input" id="presets_select">
+                <option value="default" data-i18n="optDefault">— No Style —</option>
+
+                <optgroup label="── 🎞 Film Stocks ──────────────">
+                  <option value="kodak_portra">🟧 Kodak Portra 400</option>
+                  <option value="fuji_pro_400h">🩵 Fuji Pro 400H</option>
+                  <option value="ilford_hp5">⬛ Ilford HP5 B&amp;W</option>
+                  <option value="polaroid_sx70">🟨 Polaroid SX-70</option>
+                  <option value="disposable_camera">📷 90s Disposable Camera</option>
+                  <option value="expired_film">🌫 Expired Analog Film</option>
+                </optgroup>
+
+                <optgroup label="── ☀ Lighting Conditions ────────">
+                  <option value="golden_hour">🌅 Golden Hour</option>
+                  <option value="overcast_day">☁ Overcast Day</option>
+                  <option value="moody_indoor">🕯 Moody Indoor Tungsten</option>
+                </optgroup>
+
+                <optgroup label="── 🎬 Cinema &amp; Professional ──────">
+                  <option value="cinema_log">🎬 Cinema Log (Flat)</option>
+                  <option value="sony_venice">🎥 Sony Venice Skin</option>
+                  <option value="fashion_editorial">✨ Fashion Editorial</option>
+                </optgroup>
+
+                <optgroup label="── 📸 Photography Styles ─────────">
+                  <option value="portrait_studio">🏛 Portrait Studio</option>
+                  <option value="street_photography">🌆 Street Photography</option>
+                  <option value="travel_documentary">🌍 Travel Documentary</option>
+                </optgroup>
+
+                <optgroup label="── 🌍 Geographic &amp; Atmosphere ────">
+                  <option value="tokyo_neon">🌃 Tokyo Neon Night</option>
+                  <option value="havana_1960">🇨🇺 Havana 1960s</option>
+                  <option value="sahara_desert">🏜 Sahara Desert</option>
+                  <option value="scandinavia_winter">❄ Scandinavian Winter</option>
+                  <option value="mumbai_monsoon">🌧 Mumbai Monsoon</option>
+                </optgroup>
+
+                <optgroup label="── 🕰 Historical Eras ────────────">
+                  <option value="kodachrome_70s">📸 1970s Kodachrome</option>
+                  <option value="point_shoot_90s">📷 1990s Point-and-Shoot</option>
+                  <option value="noir_newsprint">🗞 1940s Noir Newsprint</option>
+                  <option value="early_color_tv">📺 Early Color TV 1960s</option>
+                  <option value="ussr_svema">🇷🇺 Glasnost USSR 1987</option>
+                </optgroup>
+
+                <optgroup label="── 🌈 Color Theory ───────────────">
+                  <option value="split_copper_teal">🥉 Split-Tone Copper &amp; Teal</option>
+                  <option value="bleach_bypass">⚗ Bleach Bypass</option>
+                  <option value="orange_silver">🧡 Orange &amp; Silver</option>
+                  <option value="cyberpunk_acid">⚡ Cyberpunk Acid</option>
+                  <option value="muted_earth">🪨 Muted Earth Tones</option>
+                </optgroup>
+
+                <optgroup label="── 🎞 Director's Eye ─────────────">
+                  <option value="wes_anderson">🎨 Wes Anderson Pastel</option>
+                  <option value="fincher_dark">🖤 David Fincher Dark</option>
+                  <option value="wong_kar_wai">🔴 Wong Kar-Wai</option>
+                  <option value="dune_sand">🏜 Dune (2021) Sand</option>
+                  <option value="la_la_land">✨ La La Land Golden</option>
+                </optgroup>
+
+              </select>
+            </div>
+            <div class="preset-actions" style="display: flex; gap: 8px; margin-top: 8px;">
+              <button class="btn btn-small" id="btnSavePreset" style="flex: 1; padding: 6px 12px; font-size: 12px;" data-i18n="btnSavePreset">Save Current</button>
+              <button class="btn btn-small btn-danger hidden" id="btnDeletePreset" style="flex: 1; padding: 6px 12px; font-size: 12px;" data-i18n="btnDeletePreset">Delete</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── SCOPES & ANALYZERS ── -->
+
+        <!-- ── DIMENSIONS & CROP ── -->
+        <div class="section" data-section="dimensions">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M3 3v11h11M17 17V6H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secDimensions">Dimensions & Crop</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="crop_enabled" style="margin-right: 8px; width: auto;">
+                <span data-i18n="lblEnableCrop">Enable Crop Overlay</span>
+              </label>
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblCropRatio">Aspect Ratio</label>
+              <select class="select-input" id="crop_aspect_ratio">
+                <option value="free" data-i18n="optRatioFree">Free</option>
+                <option value="1:1">1:1 Square</option>
+                <option value="4:3">4:3 Standard</option>
+                <option value="16:9">16:9 Widescreen</option>
+              </select>
+            </div>
+            <hr style="border: 0; border-top: 1px solid #1a1a24; margin: 12px 0;">
+            <div class="control-group">
+              <label data-i18n="lblResizeScale">Resize Scale (%) <span class="val" id="val_resize_scale">100</span></label>
+              <input type="range" class="slider" id="resize_scale" min="10" max="100" step="5" value="100" data-default="100">
+            </div>
+            <div class="control-group-row" style="display: flex; gap: 8px;">
+              <div class="control-group" style="flex: 1;">
+                <label data-i18n="lblWidth">Width (px)</label>
+                <input type="text" class="text-input" id="resize_width" placeholder="Auto" style="padding: 6px 10px;">
+              </div>
+              <div class="control-group" style="flex: 1;">
+                <label data-i18n="lblHeight">Height (px)</label>
+                <input type="text" class="text-input" id="resize_height" placeholder="Auto" style="padding: 6px 10px;">
+              </div>
+            </div>
+            <button class="reset-btn" data-reset="dimensions" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── RAW DEVELOPMENT ── -->
+        <div class="section hidden" id="sec_raw_develop" data-section="rawdevelop">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7 10l2 2 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secRawDevelop">RAW Develop</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label data-i18n="lblRawDemosaic">Demosaicing Algorithm</label>
+              <select class="select-input" id="raw_demosaic" data-default="AHD">
+                <option value="AHD" selected>AHD (Adaptive Homogeneity-Directed)</option>
+                <option value="PPG">PPG (Patterned Pixel Grouping)</option>
+                <option value="VNG">VNG (Variable Number of Gradients)</option>
+                <option value="Bilinear">Bilinear (Fast)</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblRawExposure">RAW Exposure (EV)<span class="val" id="val_raw_exposure">0.00</span></label>
+              <input type="range" class="slider" id="raw_exposure" min="-3" max="3" step="0.1" value="0.0" data-default="0.0">
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblRawHighlightRecovery">Highlight Recovery</label>
+              <select class="select-input" id="raw_highlight_mode" data-default="blend">
+                <option value="blend" selected>Blend (Smooth)</option>
+                <option value="reconstruct">Reconstruct (Details)</option>
+                <option value="clip">Clip (Hard limit)</option>
+              </select>
+            </div>
+            <button class="reset-btn" data-reset="rawdevelop" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── COLOR LOOKS (LUT) ── -->
+        <div class="section" data-section="colorlooks">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M10 2a8 8 0 100 16 8 8 0 000-16z" stroke="currentColor" stroke-width="1.5"/><path d="M10 2v16M2 10h16" stroke="currentColor" stroke-width="1"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secColorLooks">Color Looks (LUT)</span>
+            <button class="section-toggle on" data-toggle-section="colorlooks" title="Enable / Disable">ON</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label data-i18n="lblColorLook">Select Look</label>
+              <select class="select-input" id="lut_look" data-default="None">
+                <option value="None" data-i18n="optLookNone" selected>None</option>
+                <option value="Teal & Orange">Teal & Orange</option>
+                <option value="Kodak Portra">Kodak Portra</option>
+                <option value="Fuji Superia">Fuji Superia</option>
+                <option value="Monochrome Noir">Monochrome Noir</option>
+                <option value="Vintage Gold">Vintage Gold</option>
+                <option value="Cyberpunk">Cyberpunk</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblLookIntensity">Intensity<span class="val" id="val_lut_intensity">0.00</span></label>
+              <input type="range" class="slider" id="lut_intensity" min="0" max="1" step="0.05" value="0" data-default="0">
+            </div>
+            <button class="reset-btn" data-reset="colorlooks" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── WHITE BALANCE ── -->
+        <div class="section" data-section="whitebalance">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M10 3v14M3 10h14" stroke="currentColor" stroke-width="1" stroke-linecap="round"/><circle cx="10" cy="10" r="2" fill="currentColor"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secWhiteBalance">White Balance</span>
+            <button class="section-toggle on" data-toggle-section="whitebalance" title="Enable / Disable">ON</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label data-i18n="lblWhiteBalanceMode">Mode</label>
+              <select class="select-input" id="whitebalance_mode" data-default="manual">
+                <option value="manual" data-i18n="optWBManual">Manual</option>
+                <option value="auto" data-i18n="optWBAuto">Auto (Grey World)</option>
+                <option value="smart" data-i18n="optWBSmart">Smart (Robust)</option>
+              </select>
+            </div>
+            <div class="control-group" id="group_color_temp">
+              <label data-i18n="lblColorTemp">Temperature (K)<span class="val" id="val_color_temp">6500</span></label>
+              <input type="range" class="slider" id="color_temp" min="2000" max="10000" step="100" value="6500" data-default="6500">
+              <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.5;margin-top:2px;"><span>🕯 2000K</span><span>☀ 5500K</span><span>🌤 10000K</span></div>
+            </div>
+            <div class="control-group" id="group_color_tint">
+              <label data-i18n="lblColorTint">Tint (Green↔Magenta)<span class="val" id="val_color_tint">0.00</span></label>
+              <input type="range" class="slider" id="color_tint" min="-1" max="1" step="0.01" value="0" data-default="0">
+            </div>
+            <button class="reset-btn" data-reset="whitebalance" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── NOISE ── -->
+        <div class="section" data-section="noise">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="5" cy="5" r="1.5" fill="currentColor"/><circle cx="14" cy="3" r="1" fill="currentColor"/><circle cx="9" cy="10" r="1.5" fill="currentColor"/><circle cx="3" cy="14" r="1" fill="currentColor"/><circle cx="16" cy="12" r="1.5" fill="currentColor"/><circle cx="10" cy="17" r="1" fill="currentColor"/><circle cx="17" cy="18" r="1" fill="currentColor"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secNoise">Noise</span>
+            <button class="section-toggle on" data-toggle-section="noise" title="Enable / Disable">ON</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label data-i18n="lblNoiseLevel">Noise Level<span class="val" id="val_noise_level">0.02</span></label>
               <input type="range" class="slider" id="noise_level" min="0" max="1" step="0.01" value="0.02" data-default="0.02">
             </div>
             <div class="control-group">
-              <label>Blue Bias<span class="val" id="val_blue_bias">0.80</span></label>
+              <label data-i18n="lblBlueBias">Blue Bias<span class="val" id="val_blue_bias">0.80</span></label>
               <input type="range" class="slider" id="blue_bias" min="0.1" max="2" step="0.01" value="0.8" data-default="0.8">
             </div>
-            <button class="reset-btn" data-reset="noise">Reset</button>
+            <button class="reset-btn" data-reset="noise" data-i18n="btnReset">Reset</button>
           </div>
         </div>
 
@@ -111,21 +430,57 @@
             <span class="section-icon">
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><rect x="2" y="2" width="16" height="16" rx="3" stroke="currentColor" stroke-width="1.5"/><circle cx="6" cy="6" r="1" fill="currentColor"/><circle cx="10" cy="8" r="1.5" fill="currentColor"/><circle cx="14" cy="5" r="1" fill="currentColor"/><circle cx="7" cy="13" r="1.5" fill="currentColor"/><circle cx="13" cy="14" r="1" fill="currentColor"/></svg>
             </span>
-            <span class="section-title">Grain</span>
+            <span class="section-title" data-i18n="secGrain">Grain</span>
+            <button class="section-toggle on" data-toggle-section="grain" title="Enable / Disable">ON</button>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Grain Strength<span class="val" id="val_grain_strength">0.30</span></label>
+              <label data-i18n="lblGrainStrength">Grain Strength<span class="val" id="val_grain_strength">0.30</span></label>
               <input type="range" class="slider" id="grain_strength" min="0" max="1" step="0.01" value="0.3" data-default="0.3">
             </div>
             <div class="control-group">
-              <label>Grain Size<span class="val" id="val_grain_size">2</span></label>
+              <label data-i18n="lblGrainSize">Grain Size<span class="val" id="val_grain_size">2</span></label>
               <input type="range" class="slider" id="grain_size" min="1" max="10" step="1" value="2" data-default="2">
             </div>
-            <button class="reset-btn" data-reset="grain">Reset</button>
+            <div class="control-group header-checkbox" style="margin-bottom: 8px;">
+              <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="grain_luminosity_mask" style="margin-right: 8px; width: auto; height: auto;">
+                <strong>Mask Grain by Luminosity</strong>
+              </label>
+            </div>
+            <button class="reset-btn" data-reset="grain" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── SHARPNESS ── -->
+        <div class="section" data-section="sharpness">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M3 17L10 3l7 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 12h8" stroke="currentColor" stroke-width="1" stroke-linecap="round"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secSharpness">Sharpness</span>
+            <button class="section-toggle on" data-toggle-section="sharpness" title="Enable / Disable">ON</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label data-i18n="lblSharpAmount">Amount<span class="val" id="val_sharpness_amount">0.00</span></label>
+              <input type="range" class="slider" id="sharpness_amount" min="0" max="2" step="0.05" value="0" data-default="0">
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblSharpRadius">Radius (px)<span class="val" id="val_sharpness_radius">1.0</span></label>
+              <input type="range" class="slider" id="sharpness_radius" min="0.5" max="5" step="0.1" value="1.0" data-default="1.0">
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblSharpThreshold">Threshold<span class="val" id="val_sharpness_threshold">3</span></label>
+              <input type="range" class="slider" id="sharpness_threshold" min="0" max="10" step="1" value="3" data-default="3">
+            </div>
+            <button class="reset-btn" data-reset="sharpness" data-i18n="btnReset">Reset</button>
           </div>
         </div>
 
@@ -135,27 +490,36 @@
             <span class="section-icon">
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><ellipse cx="10" cy="10" rx="4" ry="8" stroke="currentColor" stroke-width="1"/><line x1="2" y1="10" x2="18" y2="10" stroke="currentColor" stroke-width="1"/></svg>
             </span>
-            <span class="section-title">Lens Warp</span>
+            <span class="section-title" data-i18n="secLensWarp">Lens Warp</span>
+            <button class="section-toggle on" data-toggle-section="lenswarp" title="Enable / Disable">ON</button>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Distortion<span class="val" id="val_distortion">0.03</span></label>
+              <label data-i18n="lblDistortion">Distortion<span class="val" id="val_distortion">0.03</span></label>
               <input type="range" class="slider" id="distortion" min="-1" max="1" step="0.01" value="0.03" data-default="0.03">
             </div>
             <div class="control-group">
-              <label>Chromatic Aberration<span class="val" id="val_chromatic_aberration">0.10</span></label>
+              <label data-i18n="lblChromaticAberration">Chromatic Aberration<span class="val" id="val_chromatic_aberration">0.10</span></label>
               <input type="range" class="slider" id="chromatic_aberration" min="0" max="5" step="0.01" value="0.1" data-default="0.1">
             </div>
             <div class="control-group">
-              <label>Edge Softness<span class="val" id="val_edge_softness">0.15</span></label>
+              <label data-i18n="lblEdgeSoftness">Edge Softness<span class="val" id="val_edge_softness">0.15</span></label>
               <input type="range" class="slider" id="edge_softness" min="0" max="1" step="0.01" value="0.15" data-default="0.15">
             </div>
-            <button class="reset-btn" data-reset="lenswarp">Reset</button>
+            <div class="control-group header-checkbox" style="margin-bottom: 8px;">
+              <label style="display: flex; align-items: center; cursor: pointer; user-select: none;">
+                <input type="checkbox" id="aberration_radial" style="margin-right: 8px; width: auto; height: auto;">
+                <strong>Radial Aberration</strong>
+              </label>
+            </div>
+            <button class="reset-btn" data-reset="lenswarp" data-i18n="btnReset">Reset</button>
           </div>
         </div>
+
+        <!-- ── PORTRAIT BOKEH ── -->
 
         <!-- ── STYLE FX ── -->
         <div class="section" data-section="stylefx">
@@ -163,39 +527,45 @@
             <span class="section-icon">
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M10 2l2.5 5.5L18 9l-4.5 3.5L15 18l-5-3.5L5 18l1.5-5.5L2 9l5.5-1.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
             </span>
-            <span class="section-title">Style FX</span>
+            <span class="section-title" data-i18n="secStyleFx">Style FX</span>
+            <button class="section-toggle on" data-toggle-section="stylefx" title="Enable / Disable">ON</button>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Mode</label>
+              <label data-i18n="lblMode">Mode</label>
               <select class="select-input" id="mode" data-default="Bloom">
-                <option value="GlitchArt">GlitchArt</option>
-                <option value="SoftPortrait">SoftPortrait</option>
-                <option value="CinematicGrade">CinematicGrade</option>
-                <option value="Halation">Halation</option>
-                <option value="Bloom" selected>Bloom</option>
+                <option value="GlitchArt" data-i18n="optGlitchArt">GlitchArt</option>
+                <option value="SoftPortrait" data-i18n="optSoftPortrait">SoftPortrait</option>
+                <option value="CinematicGrade" data-i18n="optCinematicGrade">CinematicGrade</option>
+                <option value="Halation" data-i18n="optHalation">Halation</option>
+                <option value="Bloom" data-i18n="optBloom" selected>Bloom</option>
+                <option value="RetroFilm" data-i18n="optRetroFilm">RetroFilm</option>
+                <option value="Duotone" data-i18n="optDuotone">Duotone</option>
+                <option value="Matte" data-i18n="optMatte">Matte</option>
+                <option value="BokehBlur">Bokeh Blur (FFT)</option>
+                <option value="PixelSorting">Pixel Sorting</option>
               </select>
             </div>
             <div class="control-group">
-              <label>Strength<span class="val" id="val_strength">0.33</span></label>
+              <label data-i18n="lblStrength">Strength<span class="val" id="val_strength">0.33</span></label>
               <input type="range" class="slider" id="strength" min="0" max="1" step="0.01" value="0.33" data-default="0.33">
             </div>
             <div class="control-group">
-              <label>Radius<span class="val" id="val_radius">20.7</span></label>
+              <label data-i18n="lblRadius">Radius<span class="val" id="val_radius">20.7</span></label>
               <input type="range" class="slider" id="radius" min="0" max="64" step="0.1" value="20.7" data-default="20.7">
             </div>
             <div class="control-group">
-              <label>Threshold<span class="val" id="val_threshold">0.80</span></label>
+              <label data-i18n="lblThreshold">Threshold<span class="val" id="val_threshold">0.80</span></label>
               <input type="range" class="slider" id="threshold" min="0" max="1" step="0.01" value="0.8" data-default="0.8">
             </div>
             <div class="control-group">
-              <label>Seed</label>
+              <label data-i18n="lblSeed">Seed</label>
               <input type="number" class="number-input" id="seed" value="0" min="0" step="1" data-default="0">
             </div>
-            <button class="reset-btn" data-reset="stylefx">Reset</button>
+            <button class="reset-btn" data-reset="stylefx" data-i18n="btnReset">Reset</button>
           </div>
         </div>
 
@@ -205,21 +575,22 @@
             <span class="section-icon">
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="8" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="4" stroke="currentColor" stroke-width="1" stroke-dasharray="3 2"/></svg>
             </span>
-            <span class="section-title">Vignette</span>
+            <span class="section-title" data-i18n="secVignette">Vignette</span>
+            <button class="section-toggle on" data-toggle-section="vignette" title="Enable / Disable">ON</button>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Outer Brightness<span class="val" id="val_outer_brightness">0.05</span></label>
+              <label data-i18n="lblOuterBrightness">Outer Brightness<span class="val" id="val_outer_brightness">0.05</span></label>
               <input type="range" class="slider" id="outer_brightness" min="-1" max="1" step="0.01" value="0.05" data-default="0.05">
             </div>
             <div class="control-group">
-              <label>Inner Brightness<span class="val" id="val_inner_brightness">0.20</span></label>
+              <label data-i18n="lblInnerBrightness">Inner Brightness<span class="val" id="val_inner_brightness">0.20</span></label>
               <input type="range" class="slider" id="inner_brightness" min="-1" max="1" step="0.01" value="0.2" data-default="0.2">
             </div>
-            <button class="reset-btn" data-reset="vignette">Reset</button>
+            <button class="reset-btn" data-reset="vignette" data-i18n="btnReset">Reset</button>
           </div>
         </div>
 
@@ -229,54 +600,229 @@
             <span class="section-icon">
               <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M2 14 Q6 4, 10 10 Q14 16, 18 6" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
             </span>
-            <span class="section-title">Tone Adjust</span>
+            <span class="section-title" data-i18n="secToneAdjust">Tone Adjust</span>
+            <button class="section-toggle on" data-toggle-section="toneadjust" title="Enable / Disable">ON</button>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Brightness<span class="val" id="val_brightness">1.16</span></label>
+              <label data-i18n="lblBrightness">Brightness<span class="val" id="val_brightness">1.16</span></label>
               <input type="range" class="slider" id="brightness" min="0" max="2" step="0.01" value="1.16" data-default="1.16">
             </div>
             <div class="control-group">
-              <label>Contrast<span class="val" id="val_contrast">1.01</span></label>
+              <label data-i18n="lblContrast">Contrast<span class="val" id="val_contrast">1.01</span></label>
               <input type="range" class="slider" id="contrast" min="0" max="2" step="0.01" value="1.01" data-default="1.01">
             </div>
             <div class="control-group">
-              <label>Light Balance<span class="val" id="val_light_balance">0.36</span></label>
+              <label data-i18n="lblLightBalance">Light Balance<span class="val" id="val_light_balance">0.36</span></label>
               <input type="range" class="slider" id="light_balance" min="-1" max="1" step="0.01" value="0.36" data-default="0.36">
             </div>
             <div class="control-group">
-              <label>Highlights<span class="val" id="val_highlights">0.53</span></label>
+              <label data-i18n="lblHighlights">Highlights<span class="val" id="val_highlights">0.53</span></label>
               <input type="range" class="slider" id="highlights" min="-1" max="1" step="0.01" value="0.53" data-default="0.53">
             </div>
             <div class="control-group">
-              <label>Shadows<span class="val" id="val_shadows">-0.02</span></label>
+              <label data-i18n="lblShadows">Shadows<span class="val" id="val_shadows">-0.02</span></label>
               <input type="range" class="slider" id="shadows" min="-1" max="1" step="0.01" value="-0.02" data-default="-0.02">
             </div>
             <div class="control-group">
-              <label>Warmth<span class="val" id="val_warmth">0.04</span></label>
+              <label data-i18n="lblWarmth">Warmth<span class="val" id="val_warmth">0.04</span></label>
               <input type="range" class="slider" id="warmth" min="-1" max="1" step="0.01" value="0.04" data-default="0.04">
             </div>
-            <button class="reset-btn" data-reset="toneadjust">Reset</button>
+            <button class="reset-btn" data-reset="toneadjust" data-i18n="btnReset">Reset</button>
           </div>
         </div>
 
-        <!-- ── METADATA (EXIF) ── -->
-        <div class="section collapsed" data-section="metadata">
-          <button class="section-header" aria-expanded="false">
+        <!-- ── TONE CURVES ── -->
+        <div class="section" data-section="curves">
+          <button class="section-header" aria-expanded="true">
             <span class="section-icon">
-              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.2"/><line x1="6" y1="9.5" x2="14" y2="9.5" stroke="currentColor" stroke-width="1.2"/><line x1="6" y1="13" x2="11" y2="13" stroke="currentColor" stroke-width="1.2"/></svg>
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M2 18 C 6 18, 14 2, 18 2" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
             </span>
-            <span class="section-title">Metadata (EXIF)</span>
+            <span class="section-title" data-i18n="secCurves">Tone Curves</span>
+            <button class="section-toggle on" data-toggle-section="curves" title="Enable / Disable">ON</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="curves-channels" style="display: flex; gap: 4px; margin-bottom: 8px;">
+              <button class="btn btn-small curve-chan-btn active" data-channel="rgb" style="flex: 1; padding: 4px; font-size: 11px;">RGB</button>
+              <button class="btn btn-small curve-chan-btn" data-channel="red" style="flex: 1; padding: 4px; font-size: 11px; color: #ff5555;">Red</button>
+              <button class="btn btn-small curve-chan-btn" data-channel="green" style="flex: 1; padding: 4px; font-size: 11px; color: #55ff55;">Green</button>
+              <button class="btn btn-small curve-chan-btn" data-channel="blue" style="flex: 1; padding: 4px; font-size: 11px; color: #5555ff;">Blue</button>
+            </div>
+            <div class="curves-container" style="position: relative; width: 220px; height: 220px; margin: 0 auto; background: #07070b; border: 1px solid #1a1a24; border-radius: 4px; overflow: hidden;">
+              <canvas id="curvesCanvas" width="220" height="220" style="display: block; cursor: crosshair;"></canvas>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 10px; opacity: 0.5; margin-top: 4px; padding: 0 4px;">
+              <span>Input: <span id="curve_val_in">-</span></span>
+              <span>Output: <span id="curve_val_out">-</span></span>
+            </div>
+            <button class="reset-btn" data-reset="curves" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── SATURATION + VIBRANCE ── -->
+        <div class="section" data-section="saturation">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/><path d="M7 10c0-1.65 1.34-3 3-3s3 1.35 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 13v-1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secSaturation">Saturation &amp; Vibrance</span>
+            <button class="section-toggle on" data-toggle-section="saturation" title="Enable / Disable">ON</button>
             <span class="section-chevron">
               <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </span>
           </button>
           <div class="section-body">
             <div class="control-group">
-              <label>Camera Preset</label>
+              <label data-i18n="lblSaturation">Saturation<span class="val" id="val_saturation">0.00</span></label>
+              <input type="range" class="slider" id="saturation" min="-1" max="1" step="0.01" value="0" data-default="0">
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblVibrance">Vibrance<span class="val" id="val_vibrance">0.00</span></label>
+              <input type="range" class="slider" id="vibrance" min="-1" max="1" step="0.01" value="0" data-default="0">
+              <div style="font-size:10px;opacity:0.5;margin-top:3px;" data-i18n="hintVibrance">Smart boost: protects already-saturated colors</div>
+            </div>
+            <button class="reset-btn" data-reset="saturation" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── SPLIT TONING ── -->
+        <div class="section" data-section="splittoning">
+          <button class="section-header" aria-expanded="false">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none">
+                <circle cx="10" cy="10" r="7" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M10 3v14" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M10 3A7 7 0 0110 17z" fill="currentColor" opacity="0.3"/>
+              </svg>
+            </span>
+            <span class="section-title">Split Toning</span>
+            <button class="section-toggle off" data-toggle-section="splittoning" title="Enable / Disable">OFF</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group" style="display: flex; gap: 12px; align-items: center; justify-content: space-between;">
+              <div>
+                <label style="margin-bottom: 2px;">Shadow Tint</label>
+                <div style="font-size: 10px; opacity: 0.5;">Tint for dark areas</div>
+              </div>
+              <input type="color" id="split_shadow_color" value="#102040" data-default="#102040" style="border: none; width: 36px; height: 24px; border-radius: 4px; background: none; cursor: pointer;">
+            </div>
+            <div class="control-group" style="display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-top: 10px;">
+              <div>
+                <label style="margin-bottom: 2px;">Highlight Tint</label>
+                <div style="font-size: 10px; opacity: 0.5;">Tint for light areas</div>
+              </div>
+              <input type="color" id="split_highlight_color" value="#ffaa20" data-default="#ffaa20" style="border: none; width: 36px; height: 24px; border-radius: 4px; background: none; cursor: pointer;">
+            </div>
+            <div class="control-group" style="margin-top: 12px;">
+              <label>Balance<span class="val" id="val_split_balance">0.00</span></label>
+              <input type="range" class="slider" id="split_balance" min="-1" max="1" step="0.05" value="0.00" data-default="0.00">
+            </div>
+            <button class="reset-btn" data-reset="splittoning">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── GRADIENT MAP ── -->
+        <div class="section" data-section="gradientmap">
+          <button class="section-header" aria-expanded="false">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none">
+                <rect x="3" y="3" width="14" height="14" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                <path d="M5 5h10v10H5z" fill="url(#grad_map_icon_grad)"/>
+                <defs>
+                  <linearGradient id="grad_map_icon_grad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stop-color="currentColor" stop-opacity="0.2"/>
+                    <stop offset="100%" stop-color="currentColor" stop-opacity="0.9"/>
+                  </linearGradient>
+                </defs>
+              </svg>
+            </span>
+            <span class="section-title">Gradient Map</span>
+            <button class="section-toggle off" data-toggle-section="gradientmap" title="Enable / Disable">OFF</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Preset Gradient</label>
+              <select class="select-input" id="gradient_preset" data-default="Sunset">
+                <option value="Sunset">Sunset (Purple/Red/Yellow)</option>
+                <option value="Forest">Forest (Deep Green/Olive/Grey)</option>
+                <option value="Cyberpunk">Cyberpunk (Blue/Magenta/Teal)</option>
+                <option value="Vintage">Vintage (Brown/Beige/Cream)</option>
+                <option value="B&W">B&W (Black/White)</option>
+              </select>
+            </div>
+            <div class="control-group" style="margin-top: 12px;">
+              <label>Map Intensity<span class="val" id="val_gradient_intensity">1.00</span></label>
+              <input type="range" class="slider" id="gradient_intensity" min="0" max="1" step="0.05" value="1.00" data-default="1.00">
+            </div>
+            <button class="reset-btn" data-reset="gradientmap">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── STYLE TRANSFER ── -->
+        <div class="section" data-section="styletransfer">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5z" stroke="currentColor" stroke-width="1.5"/><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secStyleTransfer">Style Match</span>
+            <button class="section-toggle on" data-toggle-section="styletransfer" title="Enable / Disable">ON</button>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label>Reference Photo</label>
+              <div style="display: flex; gap: 8px; margin-top: 4px; align-items: center;">
+                <input type="file" id="style_ref_input" accept="image/*" style="display: none;">
+                <button id="btn_load_style_ref" class="btn btn-save btn-small" style="flex: 1;">Load Photo...</button>
+                <img id="style_ref_preview" src="" alt="" style="width: 36px; height: 36px; border-radius: 4px; object-fit: cover; border: 1px solid var(--border); display: none;">
+              </div>
+            </div>
+            <div class="control-group" style="margin-top: 8px;">
+              <label data-i18n="lblStyleTransferMode">Match Mode</label>
+              <select class="select-input" id="style_transfer_mode" data-default="pixel">
+                <option value="pixel" data-i18n="optStyleModePixel" selected>Pixel Match (CIELAB)</option>
+                <option value="sliders" data-i18n="optStyleModeSliders">Slider Match (UI Sliders)</option>
+                <option value="covariance">Covariance Match (Stats Transfer)</option>
+              </select>
+            </div>
+            <div class="control-group" id="group_style_transfer_intensity" style="margin-top: 12px;">
+              <label data-i18n="lblStyleTransferIntensity">Match Intensity<span class="val" id="val_style_transfer_intensity">1.00</span></label>
+              <input type="range" class="slider" id="style_transfer_intensity" min="0" max="1" step="0.01" value="1.0" data-default="1.0">
+            </div>
+            <button class="reset-btn" data-reset="styletransfer" data-i18n="btnReset">Reset</button>
+          </div>
+        </div>
+
+        <!-- ── CREATIVE FX ── -->
+
+        <!-- ── METADATA (EXIF) ── -->
+        <div class="section" data-section="metadata">
+          <button class="section-header" aria-expanded="true">
+            <span class="section-icon">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" stroke-width="1.5"/><line x1="6" y1="6" x2="14" y2="6" stroke="currentColor" stroke-width="1.2"/><line x1="6" y1="9.5" x2="14" y2="9.5" stroke="currentColor" stroke-width="1.2"/><line x1="6" y1="13" x2="11" y2="13" stroke="currentColor" stroke-width="1.2"/></svg>
+            </span>
+            <span class="section-title" data-i18n="secMetadata">Metadata (EXIF)</span>
+            <span class="section-chevron">
+              <svg viewBox="0 0 20 20" width="14" height="14" fill="none"><path d="M6 8l4 4 4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+          </button>
+          <div class="section-body">
+            <div class="control-group">
+              <label data-i18n="lblCameraPreset">Camera Preset</label>
               <select class="select-input" id="preset" data-default="Canon">
                 <option value="Canon" selected>Canon</option>
                 <option value="Sony">Sony</option>
@@ -287,30 +833,39 @@
               </select>
             </div>
             <div class="control-group">
-              <label>Artist</label>
+              <label data-i18n="lblArtist">Artist</label>
               <input type="text" class="text-input" id="artist" value="OneArt" data-default="OneArt">
             </div>
             <div class="control-group">
-              <label>Focal Length (mm)</label>
+              <label data-i18n="lblFocalLength">Focal Length (mm)</label>
               <input type="number" class="number-input" id="focal_length_mm" value="50" min="1" data-default="50">
             </div>
             <div class="control-group">
-              <label>f/Number</label>
+              <label data-i18n="lblFNumber">f/Number</label>
               <input type="text" class="text-input" id="fnumber" value="4.0" data-default="4.0">
             </div>
             <div class="control-group">
-              <label>Exposure (1/s)</label>
+              <label data-i18n="lblExposure">Exposure (1/s)</label>
               <input type="text" class="text-input" id="exposure_1_over_s" value="125" data-default="125">
             </div>
             <div class="control-group">
-              <label>ISO</label>
+              <label data-i18n="lblIso">ISO</label>
               <input type="number" class="number-input" id="iso" value="400" min="50" step="1" data-default="400">
             </div>
             <div class="control-group">
-              <label>Quality<span class="val" id="val_quality">95</span></label>
+              <label data-i18n="lblExportFormat">Export Format</label>
+              <select class="select-input" id="export_format" data-default="JPEG">
+                <option value="JPEG" selected>JPEG (.jpg)</option>
+                <option value="PNG">PNG (.png)</option>
+                <option value="TIFF">TIFF (.tif)</option>
+                <option value="WebP">WebP (.webp)</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label data-i18n="lblQuality">Quality<span class="val" id="val_quality">95</span></label>
               <input type="range" class="slider" id="quality" min="1" max="100" step="1" value="95" data-default="95">
             </div>
-            <button class="reset-btn" data-reset="metadata">Reset</button>
+            <button class="reset-btn" data-reset="metadata" data-i18n="btnReset">Reset</button>
           </div>
         </div>
 
@@ -323,17 +878,21 @@
   <footer class="bottom-bar">
     <div class="status-area">
       <div class="status-dot" id="statusDot"></div>
-      <span class="status-text" id="statusText">Ready</span>
+      <span class="status-text" id="statusText" data-i18n="statusReady">Ready</span>
     </div>
     <div class="action-buttons">
       <button class="btn btn-process" id="btnProcess" disabled>
         <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M10 2v4l3-2-3-2zM18 10h-4l2 3 2-3zM10 18v-4l-3 2 3 2zM2 10h4l-2-3-2 3z" fill="currentColor"/><circle cx="10" cy="10" r="3" stroke="currentColor" stroke-width="1.5" fill="none"/></svg>
-        <span>Process Photo</span>
+        <span data-i18n="btnProcess">Process Photo</span>
         <div class="btn-glow"></div>
+      </button>
+      <button class="btn btn-save hidden" id="btnExportLUT" style="background: linear-gradient(135deg, #f0a030, #d06010); border: none; margin-right: 8px;">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" style="margin-right: 6px;"><path d="M4 16h12v2H4v-2zm8-12v8h3l-5 5-5-5h3V4h4z" fill="currentColor"/></svg>
+        <span data-i18n="btnExportLUT">Export 3D LUT</span>
       </button>
       <button class="btn btn-save hidden" id="btnSave">
         <svg viewBox="0 0 20 20" width="16" height="16" fill="none"><path d="M15 3H5a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V6l-2-3z" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v4h6V3" stroke="currentColor" stroke-width="1.2"/><rect x="6" y="11" width="8" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>
-        <span>Save</span>
+        <span data-i18n="btnSave">Save</span>
       </button>
     </div>
   </footer>
@@ -345,7 +904,7 @@
         <div class="spinner-ring"></div>
         <div class="spinner-ring inner"></div>
       </div>
-      <p class="loading-text">Processing your photo&hellip;</p>
+      <p class="loading-text" data-i18n="loadingText">Processing your photo&hellip;</p>
     </div>
   </div>
 
@@ -358,6 +917,182 @@
     <span>Running in browser preview — backend API unavailable</span>
   </div>
 
+  <!-- ═══════════════ FEATURES INFO MODAL ═══════════════ -->
+  <div class="modal-overlay hidden" id="infoModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 data-i18n="modalInfoTitle">OneArt Photo Studio — Features</h2>
+        <button class="modal-close" id="btnInfoClose">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div id="infoEN" class="lang-section">
+
+          <h3>🆕 What's New in v7.0</h3>
+          <p>Version 7.0 introduces <b>35 Photo Styles</b> — a complete library of cinematic, analog, geographic and color-theory presets designed to make AI-generated images look like real photographs. Each style precisely combines film grain, chromatic aberration, color grading, LUTs, and lens character.</p>
+
+          <h3>🎨 35 Photo Styles — Full Library</h3>
+          <p><b>🎞 Film Stocks</b> — authentic analog emulations:<br>
+          • <b>Kodak Portra 400</b> — warm skin tones, creamy highlights, luminosity grain<br>
+          • <b>Fuji Pro 400H</b> — pastel cool tones, lifted shadows, dreamy wedding look<br>
+          • <b>Ilford HP5 B&amp;W</b> — dramatic black &amp; white, deep shadows, visible grain<br>
+          • <b>Polaroid SX-70</b> — faded, warm, soft edges, lifted blacks<br>
+          • <b>90s Disposable Camera</b> — overexposed flash, lo-fi color shift, hard grain<br>
+          • <b>Expired Analog Film</b> — color drift, heavy grain, foggy degraded look</p>
+
+          <p><b>☀ Lighting Conditions</b> — real-world light scenarios:<br>
+          • <b>Golden Hour</b> — warm sunset glow, halation on backlit hair<br>
+          • <b>Overcast Day</b> — flat diffuse light, muted colors, documentary feel<br>
+          • <b>Moody Indoor Tungsten</b> — warm orange cast, dark shadows, high ISO noise</p>
+
+          <p><b>🎬 Cinema &amp; Professional</b> — industry camera looks:<br>
+          • <b>Cinema Log (Flat)</b> — S-Log inspired flat grade, lifted blacks, protected highlights<br>
+          • <b>Sony Venice Skin</b> — Hollywood cinema skin rendering, subtle halation<br>
+          • <b>Fashion Editorial</b> — punchy, clean, crisp sharpness, neutral to cool tones</p>
+
+          <p><b>📸 Photography Styles</b> — genre-specific treatments:<br>
+          • <b>Portrait Studio</b> — clean flash, neutral tones, even exposure, professional<br>
+          • <b>Street Photography</b> — pushed ISO grain, punchy contrast, Tri-X character<br>
+          • <b>Travel Documentary</b> — natural saturated colors, clarity boost, honest exposure</p>
+
+          <p><b>🌍 Geographic &amp; Atmosphere</b> — place-specific color:<br>
+          • <b>Tokyo Neon Night</b> — wet asphalt, cyan/magenta neon, deep shadows<br>
+          • <b>Havana 1960s</b> — faded tropical warmth, bleached reds, green-cast shadows<br>
+          • <b>Sahara Desert</b> — scorched ochre, blown highlights, near-monochrome<br>
+          • <b>Scandinavian Winter</b> — cold blue, flat diffuse, near-white highlights<br>
+          • <b>Mumbai Monsoon</b> — lush green, humidity haze, warm reflective skin</p>
+
+          <p><b>🕰 Historical Eras</b> — iconic film periods:<br>
+          • <b>1970s Kodachrome</b> — punchy saturated reds, road-trip America<br>
+          • <b>1990s Point-and-Shoot</b> — oversaturated, harsh flash, purple shadows<br>
+          • <b>1940s Noir Newsprint</b> — brutal grain, near-binary contrast, no midtones<br>
+          • <b>Early Color TV 1960s</b> — bleeding chroma, teal+orange limited palette<br>
+          • <b>Glasnost USSR 1987</b> — cold grey-blue, heavy Svema grain, desaturated</p>
+
+          <p><b>🌀 Color Theory</b> — precise colorist techniques:<br>
+          • <b>Split-Tone Copper &amp; Teal</b> — teal shadows, copper-bronze highlights<br>
+          • <b>Bleach Bypass</b> — metallic silver, high contrast, desaturated (Saving Private Ryan)<br>
+          • <b>Orange &amp; Silver</b> — warm skin tones on silver-grey neutrals, luxe editorial<br>
+          • <b>Cyberpunk Acid</b> — yellow-green + purple, near-black shadows, dystopian<br>
+          • <b>Muted Earth Tones</b> — sand, clay, olive, slate — only natural pigments</p>
+
+          <p><b>🎞 Director's Eye</b> — iconic filmmaker palettes:<br>
+          • <b>Wes Anderson Pastel</b> — symmetrical pastel pink/yellow/olive, soft light<br>
+          • <b>David Fincher Dark</b> — teal shadows, brutal contrast, near-zero light<br>
+          • <b>Wong Kar-Wai</b> — red+green duality, motion softness, Hong Kong melancholy<br>
+          • <b>Dune (2021) Sand</b> — near-monochrome warm sand, Villeneuve flat style<br>
+          • <b>La La Land Golden</b> — pure gold warmth vs cold night blue, vivid contrast</p>
+
+          <h3>⚡ WebGL-Accelerated Preview</h3>
+          <p>• The entire pipeline is compiled into a GPU fragment shader — <b>60 FPS</b> lag-free interactive previews across all adjustments.</p>
+
+          <h3>📀 Tone/RGB Curves</h3>
+          <p>• Cubic spline control over Master RGB, Red, Green, Blue channels. Export to standard <b>3D LUT (.cube)</b>.</p>
+
+          <h3>🎞 Advanced RAW Develop</h3>
+          <p>• RAW exposure compensation + demosaicing algorithms: AHD, VNG, PPG, Bilinear.</p>
+
+          <h3>💥 Parallel Batch Processing</h3>
+          <p>• Python multi-processing pool — batch export with real-time progress tracking.</p>
+
+          <h3>🌡 White Balance</h3>
+          <p>• <b>Manual</b>: Temperature (2000K–10000K) + Tint.<br>
+          • <b>Auto</b>: Grey World neutralization.<br>
+          • <b>Smart</b>: Excludes highlights/shadows/saturated pixels, 80% correction to preserve atmosphere.</p>
+
+          <h3>📷 Style Match</h3>
+          <p>• <b>Pixel Match (CIELAB)</b>: Transfer a reference image's color palette at pixel level.<br>
+          • <b>Slider Match</b>: Auto-analyze reference and tune all sliders to replicate its look.</p>
+
+          <h3>⌨ Shortcuts</h3>
+          <p>• <b>Ctrl+Z</b> Undo · <b>Ctrl+Y</b> Redo · <b>Space (hold)</b> Compare original</p>
+        </div>
+        <div id="infoRU" class="lang-section" style="display:none;">
+
+          <h3>🆕 Что нового в v7.0</h3>
+          <p>Версия 7.0 добавляет <b>35 Фото-Стилей</b> — полную библиотеку кинематографических, аналоговых, географических и колористических пресетов. Каждый стиль точно комбинирует плёночное зерно, хроматические аберрации, цветовую коррекцию, LUT и характер объектива.</p>
+
+          <h3>🎨 35 Фото-Стилей — Полная Библиотека</h3>
+          <p><b>🎞 Плёночные Стоки</b> — аутентичная эмуляция аналога:<br>
+          • <b>Kodak Portra 400</b> — тёплые телесные тона, кремовые света, плёночное зерно<br>
+          • <b>Fuji Pro 400H</b> — пастельные холодные тона, поднятые тени, свадебный вид<br>
+          • <b>Ilford HP5 Ч/Б</b> — драматичный чёрно-белый, глубокие тени, зерно<br>
+          • <b>Polaroid SX-70</b> — выцветший, тёплый, мягкие края, поднятые чёрные<br>
+          • <b>Одноразовая камера 90х</b> — пересвет вспышки, грубое зерно, цветовой сдвиг<br>
+          • <b>Просроченная плёнка</b> — дрейф цвета, тяжёлое зерно, туманный лоу-фай</p>
+
+          <p><b>☀ Условия Освещения</b> — реальные световые сценарии:<br>
+          • <b>Золотой час</b> — тёплое закатное свечение, halation на бликах<br>
+          • <b>Пасмурный день</b> — мягкий рассеянный свет, приглушённые цвета<br>
+          • <b>Уютный вечер (тунгстен)</b> — тёплый оранжевый cast, тёмные тени</p>
+
+          <p><b>🎬 Кино и Профессиональное</b> — образы камер индустрии:<br>
+          • <b>Cinema Log (Flat)</b> — плоский грейд в стиле S-Log, поднятые чёрные<br>
+          • <b>Sony Venice Кожа</b> — голливудский рендер телесных тонов, halation<br>
+          • <b>Fashion Editorial</b> — сочный, чистый, резкий, нейтральный до холодного</p>
+
+          <p><b>📸 Стили Фотографии</b> — жанровая обработка:<br>
+          • <b>Студийный Портрет</b> — чистая вспышка, нейтральные тона, профессионально<br>
+          • <b>Уличная Фотография</b> — тяжёлое ISO-зерно, контраст Tri-X<br>
+          • <b>Трэвел Документалка</b> — насыщенные цвета, честная экспозиция</p>
+
+          <p><b>🌍 География и Атмосфера</b> — цвет конкретного места:<br>
+          • <b>Ночной Токио</b> — мокрый асфальт, неон cyan/magenta, глубокие тени<br>
+          • <b>Гавана 1960х</b> — выцветшая тропическая теплота, блёклые красные<br>
+          • <b>Пустыня Сахара</b> — раскалённая охра, выбитые света<br>
+          • <b>Скандинавская Зима</b> — холодный синий, плоский свет, белые света<br>
+          • <b>Муссон Мумбаи</b> — богатый зелёный, туман влажности</p>
+
+          <p><b>🕰 Исторические Эпохи</b> — культовые плёночные периоды:<br>
+          • <b>Kodachrome 1970х</b> — насыщенные красные, Road-Trip Америка<br>
+          • <b>Point-and-Shoot 1990х</b> — перенасыщенный, жёсткая вспышка, пурпурные тени<br>
+          • <b>Газетный Нуар 1940х</b> — брутальное зерно, почти бинарный контраст<br>
+          • <b>Раннее Цветное ТВ 1960х</b> — кровотечение хромы, ограниченная палитра<br>
+          • <b>СССР Гласность 1987</b> — холодный серо-синий, тяжёлое зерно Svema</p>
+
+          <p><b>🌀 Колористика</b> — профессиональные колористические техники:<br>
+          • <b>Split-Tone Медь и Бирюза</b> — бирюзовые тени, медно-бронзовые света<br>
+          • <b>Bleach Bypass</b> — металлическое серебро, высокий контраст (Спасение рядового Райана)<br>
+          • <b>Оранжевый и Серебряный</b> — тёплая кожа на серебристо-серых нейтралях<br>
+          • <b>Cyberpunk Acid</b> — жёлто-зелёный + фиолетовый, дистопия<br>
+          • <b>Приглушённые Земляные Тона</b> — песок, глина, олива, сланец</p>
+
+          <p><b>🎞 Взгляд Режиссёра</b> — палитры культовых кинорежиссёров:<br>
+          • <b>Уэс Андерсон Пастель</b> — симметричный пастельный розовый/жёлтый/олива<br>
+          • <b>Дэвид Финчер Тёмный</b> — бирюзовые тени, жёсткий контраст, почти мрак<br>
+          • <b>Вонг Кар-Вай</b> — дуэль красного и зелёного, гонконгская меланхолия<br>
+          • <b>Дюна (2021)</b> — почти монохром тёплого песка, плоский стиль Вильнёва<br>
+          • <b>Ла-Ла Лэнд Золото</b> — чистое тёплое золото против холодного ночного синего</p>
+
+          <h3>⚡ WebGL-ускорение</h3>
+          <p>• Весь конвейер компилируется в GPU-шейдер — превью <b>60 FPS</b> без задержек.</p>
+
+          <h3>📀 Тональные Кривые RGB</h3>
+          <p>• Кубические сплайны по каналам Master RGB, Red, Green, Blue. Экспорт в <b>3D LUT (.cube)</b>.</p>
+
+          <h3>🎞 Проявка RAW</h3>
+          <p>• Компенсация экспозиции + алгоритмы демозайки: AHD, VNG, PPG, Bilinear.</p>
+
+          <h3>💥 Параллельный Пакетный Экспорт</h3>
+          <p>• Python многопроцессорный пул — пакетный экспорт с прогресс-барами.</p>
+
+          <h3>🌡 Баланс Белого</h3>
+          <p>• <b>Вручную</b>: Температура (2000K–10000K) + Tint.<br>
+          • <b>Авто</b>: Нейтрализация по серому миру.<br>
+          • <b>Умный</b>: Исключает пересветы/тени/насыщенные зоны, 80% коррекция для сохранения атмосферы.</p>
+
+          <h3>📷 Style Match</h3>
+          <p>• <b>Pixel Match (CIELAB)</b>: Перенос палитры референса на уровне пикселей.<br>
+          • <b>Slider Match</b>: Авто-анализ референса и настройка всех ползунков под него.</p>
+
+          <h3>⌨ Горячие Клавиши</h3>
+          <p>• <b>Ctrl+Z</b> Отмена · <b>Ctrl+Y</b> Повтор · <b>Пробел (зажать)</b> Сравнение</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="webgl_engine.js"></script>
+  <script src="processor.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
